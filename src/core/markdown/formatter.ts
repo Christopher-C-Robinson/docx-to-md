@@ -12,7 +12,21 @@ export class MarkdownFormatter {
   }
 
   serialize(root: RootNode): string {
-    return this.serializeChildren(root).trim() + '\n';
+    return this.normalize(this.serializeChildren(root));
+  }
+
+  /**
+   * Post-processes serialized markdown to produce deterministic output:
+   * - Strips trailing whitespace from every line
+   * - Collapses three or more consecutive newlines into exactly two
+   * - Ensures the document ends with exactly one newline character
+   */
+  private normalize(md: string): string {
+    return md
+      .replace(/[^\S\n]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      + '\n';
   }
 
   private serializeChildren(node: Parent, indent = ''): string {
@@ -75,23 +89,45 @@ export class MarkdownFormatter {
       return this.tableAsHtml(node, indent);
     }
 
-    const rows = node.children.map(row =>
-      '| ' + (row as TableRowNode).children.map(cell =>
+    const rawRows = node.children.map(row =>
+      (row as TableRowNode).children.map(cell =>
         this.serializeChildren(cell as Parent, indent).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
-      ).join(' | ') + ' |'
+      )
     );
 
-    if (rows.length === 0) return '';
+    if (rawRows.length === 0) return '';
 
-    const headerSep = '| ' + (node.children[0] as TableRowNode).children.map((cell) => {
-      const align = (node as TableNode).align?.[(node.children[0] as TableRowNode).children.indexOf(cell)];
-      if (align === 'left') return ':---';
-      if (align === 'right') return '---:';
-      if (align === 'center') return ':---:';
-      return '---';
+    const colCount = rawRows[0].length;
+
+    // Compute per-column widths in a single pass over all rows.
+    // Center-aligned separators need at least 4 chars (':' + 2 dashes + ':').
+    const colWidths: number[] = Array.from({ length: colCount }, (_, i) => {
+      const align = node.align?.[i];
+      return align === 'center' ? 4 : 3;
+    });
+    for (const row of rawRows) {
+      for (let i = 0; i < colCount; i++) {
+        const len = (row[i] ?? '').length;
+        if (len > colWidths[i]) colWidths[i] = len;
+      }
+    }
+
+    const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - s.length));
+
+    const formatRow = (cells: string[]) => {
+      const limitedCells = cells.slice(0, colCount);
+      return '| ' + limitedCells.map((c, i) => pad(c, colWidths[i])).join(' | ') + ' |';
+    };
+
+    const headerSep = '| ' + colWidths.map((w, i) => {
+      const align = node.align?.[i];
+      if (align === 'left') return ':' + '-'.repeat(w - 1);
+      if (align === 'right') return '-'.repeat(w - 1) + ':';
+      if (align === 'center') return ':' + '-'.repeat(w - 2) + ':';
+      return '-'.repeat(w);
     }).join(' | ') + ' |';
 
-    return rows[0] + '\n' + headerSep + '\n' + rows.slice(1).join('\n') + '\n\n';
+    return formatRow(rawRows[0]) + '\n' + headerSep + '\n' + rawRows.slice(1).map(formatRow).join('\n') + '\n\n';
   }
 
   private tableAsHtml(node: TableNode, _indent: string): string {
