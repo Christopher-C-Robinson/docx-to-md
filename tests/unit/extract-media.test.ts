@@ -2,6 +2,7 @@ import { extractMedia } from '../../src/core/assets/extractMedia';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as zlib from 'zlib';
 
 // ---------------------------------------------------------------------------
 // Minimal in-memory ZIP builder (stored/uncompressed entries only).
@@ -12,6 +13,8 @@ import * as os from 'os';
 interface ZipEntry {
   name: string;
   data: Buffer;
+  compressionMethod?: 0 | 8;
+  useDataDescriptor?: boolean;
 }
 
 function buildZip(entries: ZipEntry[]): Buffer {
@@ -21,35 +24,51 @@ function buildZip(entries: ZipEntry[]): Buffer {
 
   for (const entry of entries) {
     const nameBytes = Buffer.from(entry.name, 'utf8');
-    const dataLen = entry.data.length;
+    const compressionMethod = entry.compressionMethod ?? 0;
+    const compressedData = compressionMethod === 8 ? zlib.deflateRawSync(entry.data) : entry.data;
+    const compressedLen = compressedData.length;
+    const uncompressedLen = entry.data.length;
+    const useDataDescriptor = entry.useDataDescriptor ?? false;
+    const flags = useDataDescriptor ? 0x0008 : 0;
 
     // Local file header (30 bytes fixed + filename)
     const localHeader = Buffer.alloc(30 + nameBytes.length);
     localHeader.writeUInt32LE(0x04034b50, 0); // signature
     localHeader.writeUInt16LE(20, 4);          // version needed
-    localHeader.writeUInt16LE(0, 6);           // flags
-    localHeader.writeUInt16LE(0, 8);           // compression: stored
+    localHeader.writeUInt16LE(flags, 6);       // flags
+    localHeader.writeUInt16LE(compressionMethod, 8);
     localHeader.writeUInt16LE(0, 10);          // mod time
     localHeader.writeUInt16LE(0, 12);          // mod date
     localHeader.writeUInt32LE(0, 14);          // CRC-32
-    localHeader.writeUInt32LE(dataLen, 18);    // compressed size
-    localHeader.writeUInt32LE(dataLen, 22);    // uncompressed size
+    localHeader.writeUInt32LE(useDataDescriptor ? 0 : compressedLen, 18);
+    localHeader.writeUInt32LE(useDataDescriptor ? 0 : uncompressedLen, 22);
     localHeader.writeUInt16LE(nameBytes.length, 26); // filename length
     localHeader.writeUInt16LE(0, 28);          // extra field length
     nameBytes.copy(localHeader, 30);
+
+    const descriptor = useDataDescriptor
+      ? (() => {
+          const dd = Buffer.alloc(16);
+          dd.writeUInt32LE(0x08074b50, 0);      // descriptor signature
+          dd.writeUInt32LE(0, 4);               // CRC-32
+          dd.writeUInt32LE(compressedLen, 8);
+          dd.writeUInt32LE(uncompressedLen, 12);
+          return dd;
+        })()
+      : undefined;
 
     // Central directory entry (46 bytes fixed + filename)
     const cdEntry = Buffer.alloc(46 + nameBytes.length);
     cdEntry.writeUInt32LE(0x02014b50, 0); // signature
     cdEntry.writeUInt16LE(20, 4);          // version made by
     cdEntry.writeUInt16LE(20, 6);          // version needed
-    cdEntry.writeUInt16LE(0, 8);           // flags
-    cdEntry.writeUInt16LE(0, 10);          // compression: stored
+    cdEntry.writeUInt16LE(flags, 8);       // flags
+    cdEntry.writeUInt16LE(compressionMethod, 10);
     cdEntry.writeUInt16LE(0, 12);          // mod time
     cdEntry.writeUInt16LE(0, 14);          // mod date
     cdEntry.writeUInt32LE(0, 16);          // CRC-32
-    cdEntry.writeUInt32LE(dataLen, 20);    // compressed size
-    cdEntry.writeUInt32LE(dataLen, 24);    // uncompressed size
+    cdEntry.writeUInt32LE(compressedLen, 20);
+    cdEntry.writeUInt32LE(uncompressedLen, 24);
     cdEntry.writeUInt16LE(nameBytes.length, 28); // filename length
     cdEntry.writeUInt16LE(0, 30);          // extra field length
     cdEntry.writeUInt16LE(0, 32);          // comment length
@@ -59,9 +78,12 @@ function buildZip(entries: ZipEntry[]): Buffer {
     cdEntry.writeUInt32LE(offset, 42);     // local header offset
     nameBytes.copy(cdEntry, 46);
 
-    localHeaders.push(localHeader, entry.data);
+    localHeaders.push(localHeader, compressedData);
+    if (descriptor) {
+      localHeaders.push(descriptor);
+    }
     centralDirs.push(cdEntry);
-    offset += localHeader.length + dataLen;
+    offset += localHeader.length + compressedLen + (descriptor?.length ?? 0);
   }
 
   const centralDir = Buffer.concat(centralDirs);
@@ -218,6 +240,29 @@ describe('extractMedia', () => {
     expect(() => extractMedia(fakeDOCX, mediaDir)).toThrow(/Failed to read DOCX/);
   });
 
+  test('throws when central directory signature is malformed', () => {
+    const zip = buildZip([{ name: 'word/media/image1.png', data: PNG_MAGIC }]);
+    const corrupted = Buffer.from(zip);
+    const centralDirOffset = corrupted.readUInt32LE(corrupted.length - 6);
+    corrupted.writeUInt32LE(0x01020304, centralDirOffset);
+    fs.writeFileSync(fakeDOCX, corrupted);
+
+    expect(() => extractMedia(fakeDOCX, mediaDir)).toThrow(/Malformed ZIP central directory/);
+  });
+
+  test('adds warning when entry payload is truncated', () => {
+    const zip = buildZip([{ name: 'word/media/image1.png', data: PNG_MAGIC }]);
+    const corrupted = Buffer.from(zip);
+    const centralDirOffset = corrupted.readUInt32LE(corrupted.length - 6);
+    // Inflate compressed size beyond available data to force bounds failure.
+    corrupted.writeUInt32LE(999999, centralDirOffset + 20);
+    fs.writeFileSync(fakeDOCX, corrupted);
+
+    const result = extractMedia(fakeDOCX, mediaDir);
+    expect(result.assets).toHaveLength(0);
+    expect(result.warnings.some(w => w.includes('compressed data out of bounds'))).toBe(true);
+  });
+
   test('all extracted assets reside inside mediaDir', () => {
     const zip = buildZip([
       { name: 'word/media/image1.png', data: PNG_MAGIC },
@@ -232,5 +277,46 @@ describe('extractMedia', () => {
     for (const asset of result.assets) {
       expect(asset.startsWith(resolvedMediaDir + path.sep)).toBe(true);
     }
+  });
+
+  test('extracts DEFLATE-compressed media entries', () => {
+    const zip = buildZip([
+      { name: 'word/media/image1.png', data: Buffer.concat([PNG_MAGIC, Buffer.from('compressed')]), compressionMethod: 8 },
+    ]);
+    fs.writeFileSync(fakeDOCX, zip);
+
+    const result = extractMedia(fakeDOCX, mediaDir);
+    expect(result.warnings).toHaveLength(0);
+    expect(result.assets).toHaveLength(1);
+    expect(fs.readFileSync(result.assets[0])).toEqual(Buffer.concat([PNG_MAGIC, Buffer.from('compressed')]));
+  });
+
+  test('extracts entries when local header uses data descriptor sizes', () => {
+    const payload = Buffer.concat([JPG_MAGIC, Buffer.from('descriptor')]);
+    const zip = buildZip([
+      { name: 'word/media/image2.jpg', data: payload, compressionMethod: 8, useDataDescriptor: true },
+    ]);
+    fs.writeFileSync(fakeDOCX, zip);
+
+    const result = extractMedia(fakeDOCX, mediaDir);
+    expect(result.warnings).toHaveLength(0);
+    expect(result.assets).toHaveLength(1);
+    expect(path.basename(result.assets[0])).toBe('image2.jpg');
+    expect(fs.readFileSync(result.assets[0])).toEqual(payload);
+  });
+
+  test('disambiguates filename collisions after sanitization', () => {
+    const zip = buildZip([
+      { name: 'word/media/image1.png', data: PNG_MAGIC },
+      { name: 'word/media/sub/image1.png', data: JPG_MAGIC },
+    ]);
+    fs.writeFileSync(fakeDOCX, zip);
+
+    const result = extractMedia(fakeDOCX, mediaDir);
+
+    expect(result.assets).toHaveLength(2);
+    const basenames = result.assets.map(p => path.basename(p)).sort();
+    expect(basenames).toEqual(['image1.png', 'image1_1.png']);
+    expect(result.warnings.some(w => w.includes('Filename collision'))).toBe(true);
   });
 });

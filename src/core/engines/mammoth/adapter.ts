@@ -44,18 +44,24 @@ export class MammothAdapter implements EngineAdapter {
 
     if (options.mediaDir) {
       const mediaDir = path.resolve(options.mediaDir);
+      let contentMap = new Map<string, string>();
 
       // Extract all media from the DOCX archive up-front so that images get
       // their original names (e.g. image1.png) with sanitized, safe paths.
       // The returned `contentMap` is built during extraction so no extra
       // disk reads are needed to match images in the mammoth callback.
-      const { assets: extracted, warnings: extractWarnings, contentMap } = extractMedia(inputPath, mediaDir);
-      assets.push(...extracted);
-      warnings.push(...extractWarnings);
+      try {
+        const { assets: extracted, warnings: extractWarnings, contentMap: extractedContentMap } = extractMedia(inputPath, mediaDir);
+        assets.push(...extracted);
+        warnings.push(...extractWarnings);
+        contentMap = extractedContentMap;
+      } catch (err) {
+        warnings.push(`Failed to pre-extract DOCX media: ${(err as Error).message}`);
+      }
 
       const imageHandler = mammoth.images.imgElement((image) => {
-        return image.read('base64').then((imageBuffer) => {
-          const existing = contentMap.get(imageBuffer);
+        return image.read('base64').then((imageBase64) => {
+          const existing = contentMap.get(imageBase64);
           if (existing) {
             return { src: path.relative(path.dirname(outputPath), existing) };
           }
@@ -65,7 +71,7 @@ export class MammothAdapter implements EngineAdapter {
           const ext = image.contentType.split('/')[1] ?? 'png';
           const filename = `image-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
           const filepath = path.join(mediaDir, filename);
-          fs.writeFileSync(filepath, Buffer.from(imageBuffer, 'base64'));
+          fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
           assets.push(filepath);
           return { src: path.relative(path.dirname(outputPath), filepath) };
         });

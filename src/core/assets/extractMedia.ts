@@ -64,9 +64,16 @@ function parseMediaEntries(buf: Buffer): CentralDirEntry[] {
   let pos = centralDirOffset;
   const end = centralDirOffset + centralDirSize;
 
+  if (centralDirOffset < 0 || centralDirOffset > buf.length || end < centralDirOffset || end > buf.length) {
+    throw new Error('Malformed ZIP central directory: out-of-bounds offset/size');
+  }
+
   while (pos + 46 <= end) {
-    if (buf.readUInt32LE(pos) !== CENTRAL_DIR_SIG) {
-      break;
+    const sig = buf.readUInt32LE(pos);
+    if (sig !== CENTRAL_DIR_SIG) {
+      throw new Error(
+        `Malformed ZIP central directory: expected signature 0x${CENTRAL_DIR_SIG.toString(16)} at offset ${pos}, found 0x${sig.toString(16)}`,
+      );
     }
 
     const compressionMethod = buf.readUInt16LE(pos + 10);
@@ -104,8 +111,20 @@ function decompressEntry(buf: Buffer, entry: CentralDirEntry): Buffer {
   const localFilenameLen = buf.readUInt16LE(entry.localHeaderOffset + 26);
   const localExtraLen = buf.readUInt16LE(entry.localHeaderOffset + 28);
   const dataOffset = entry.localHeaderOffset + 30 + localFilenameLen + localExtraLen;
+  const endOffset = dataOffset + entry.compressedSize;
 
-  const compressedData = buf.subarray(dataOffset, dataOffset + entry.compressedSize);
+  if (
+    dataOffset < 0 ||
+    dataOffset > buf.length ||
+    endOffset < dataOffset ||
+    endOffset > buf.length
+  ) {
+    throw new Error(
+      `Truncated or corrupt ZIP entry "${entry.filename}": compressed data out of bounds`,
+    );
+  }
+
+  const compressedData = buf.subarray(dataOffset, endOffset);
 
   if (entry.compressionMethod === COMPRESSION_STORED) {
     return compressedData;
@@ -138,6 +157,7 @@ export function extractMedia(docxPath: string, mediaDir: string): MediaExtractio
   const warnings: string[] = [];
   const assets: string[] = [];
   const contentMap = new Map<string, string>();
+  const usedDestinations = new Set<string>();
 
   fs.mkdirSync(resolvedMediaDir, { recursive: true });
 
@@ -154,7 +174,21 @@ export function extractMedia(docxPath: string, mediaDir: string): MediaExtractio
     // Sanitize path: strips traversal sequences and illegal characters.
     let destPath: string;
     try {
-      destPath = sanitizeMediaPath(entry.filename, resolvedMediaDir);
+      const desiredPath = sanitizeMediaPath(entry.filename, resolvedMediaDir);
+      destPath = desiredPath;
+
+      let suffix = 1;
+      while (usedDestinations.has(destPath)) {
+        const parsed = path.parse(desiredPath);
+        destPath = path.join(parsed.dir, `${parsed.name}_${suffix}${parsed.ext}`);
+        suffix += 1;
+      }
+
+      if (destPath !== desiredPath) {
+        warnings.push(
+          `Filename collision for "${entry.filename}" after sanitization; wrote as "${path.basename(destPath)}"`,
+        );
+      }
     } catch {
       warnings.push(`Skipping unsafe path in archive: "${entry.filename}"`);
       continue;
@@ -163,6 +197,7 @@ export function extractMedia(docxPath: string, mediaDir: string): MediaExtractio
     try {
       const data = decompressEntry(buf, entry);
       fs.writeFileSync(destPath, data);
+      usedDestinations.add(destPath);
       assets.push(destPath);
       // Build content map while data is already in memory — no extra disk read.
       const key = data.toString('base64');
