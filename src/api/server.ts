@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import archiver from 'archiver';
+import rateLimit from 'express-rate-limit';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -84,6 +85,23 @@ const upload = multer({
 export function createApp(): express.Application {
   const app = express();
 
+  // Rate limiters
+  const convertLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+  });
+
+  const downloadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+  });
+
   // Serve web UI
   const webDir = path.resolve(__dirname, '../../web');
   app.use(express.static(webDir));
@@ -91,6 +109,7 @@ export function createApp(): express.Application {
   // POST /api/convert – upload a .docx and return markdown + image list
   app.post(
     '/api/convert',
+    convertLimiter,
     upload.single('file'),
     async (req: Request, res: Response): Promise<void> => {
       cleanupSessions();
@@ -147,7 +166,7 @@ export function createApp(): express.Application {
   );
 
   // GET /api/images/:sessionId/:filename – serve an extracted image
-  app.get('/api/images/:sessionId/:filename', (req: Request, res: Response): void => {
+  app.get('/api/images/:sessionId/:filename', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const filename = String(req.params['filename']);
     const session = sessions.get(sessionId);
@@ -170,7 +189,7 @@ export function createApp(): express.Application {
   });
 
   // GET /api/download/markdown/:sessionId – download the markdown file
-  app.get('/api/download/markdown/:sessionId', (req: Request, res: Response): void => {
+  app.get('/api/download/markdown/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const session = sessions.get(sessionId);
     if (!session) {
@@ -185,7 +204,7 @@ export function createApp(): express.Application {
   });
 
   // GET /api/download/images/:sessionId – download all images as a zip
-  app.get('/api/download/images/:sessionId', (req: Request, res: Response): void => {
+  app.get('/api/download/images/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const session = sessions.get(sessionId);
     if (!session) {
