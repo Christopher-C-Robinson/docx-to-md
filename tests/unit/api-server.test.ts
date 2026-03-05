@@ -77,22 +77,9 @@ describe('POST /convert – file-size limit', () => {
 });
 
 describe('POST /convert – successful conversion (corpus)', () => {
-  let tmpDir: string;
-
-  beforeAll(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'api-test-'));
-  });
-
-  afterAll(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  test('converts a DOCX corpus file if available', async () => {
+  test('converts a DOCX corpus file', async () => {
     const corpusFile = path.join(__dirname, '../corpus/simple.docx');
-    if (!fs.existsSync(corpusFile)) {
-      console.warn('No corpus DOCX found – skipping conversion test');
-      return;
-    }
+    expect(fs.existsSync(corpusFile)).toBe(true);
 
     const app = createServer();
     const res = await request(app)
@@ -114,10 +101,7 @@ describe('POST /convert – successful conversion (corpus)', () => {
 
   test('temp docx upload file is cleaned up after request', async () => {
     const corpusFile = path.join(__dirname, '../corpus/simple.docx');
-    if (!fs.existsSync(corpusFile)) {
-      console.warn('No corpus DOCX found – skipping cleanup test');
-      return;
-    }
+    expect(fs.existsSync(corpusFile)).toBe(true);
 
     // Track multer's tmp upload directory before the request
     const tmpBefore = new Set(fs.readdirSync(os.tmpdir()));
@@ -145,10 +129,7 @@ describe('POST /convert – timeout', () => {
     const app = createServer({ timeoutMs: 1 });
 
     const corpusFile = path.join(__dirname, '../corpus/simple.docx');
-    if (!fs.existsSync(corpusFile)) {
-      console.warn('No corpus DOCX found – skipping timeout test');
-      return;
-    }
+    expect(fs.existsSync(corpusFile)).toBe(true);
 
     const res = await request(app)
       .post('/convert')

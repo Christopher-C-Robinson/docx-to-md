@@ -26,6 +26,8 @@ export interface ConvertResponse {
   warnings: string[];
 }
 
+class RequestValidationError extends Error {}
+
 export function createServer(options?: {
   maxFileSizeBytes?: number;
   timeoutMs?: number;
@@ -56,7 +58,7 @@ export function createServer(options?: {
       if (isDocx) {
         cb(null, true);
       } else {
-        cb(new Error('Only .docx files are supported'));
+        cb(new RequestValidationError('Only .docx files are supported'));
       }
     },
   });
@@ -115,20 +117,26 @@ export function createServer(options?: {
         clearTimeout(timer);
         if (timedOut) return;
 
-        const assets: AssetEntry[] = [];
-        for (const assetPath of result.assets) {
-          try {
-            const content = fs.readFileSync(assetPath);
-            const ext = path.extname(assetPath).slice(1).toLowerCase();
-            assets.push({
-              filename: path.basename(assetPath),
-              contentBase64: content.toString('base64'),
-              contentType: mimeForExt(ext),
-            });
-          } catch {
-            // skip unreadable assets
-          }
-        }
+        const assetEntries = await Promise.all(
+          result.assets.map(async (assetPath) => {
+            try {
+              const content = await fs.promises.readFile(assetPath);
+              const ext = path.extname(assetPath).slice(1).toLowerCase();
+              return {
+                filename: path.basename(assetPath),
+                contentBase64: content.toString('base64'),
+                contentType: mimeForExt(ext),
+              } as AssetEntry;
+            } catch {
+              // skip unreadable assets
+              return null;
+            }
+          })
+        );
+
+        const assets: AssetEntry[] = assetEntries.filter(
+          (entry): entry is AssetEntry => entry !== null
+        );
 
         const body: ConvertResponse = {
           markdown: result.markdown,
@@ -159,7 +167,11 @@ export function createServer(options?: {
       return;
     }
     if (err instanceof Error) {
-      res.status(400).json({ error: err.message });
+      if (err instanceof RequestValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Internal server error' });
       return;
     }
     res.status(500).json({ error: 'Internal server error' });
