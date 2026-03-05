@@ -6,3 +6,5 @@ export * from './assets/extractMedia';
 export * from './metadata/extractor';
 export * from './engines/interface';
 export { getEngine, resolveEngine } from './engines/registry';
+export { convertDocx } from './convert';
+export type { ConvertDocxOptions, ConvertDocxResult } from './convert';

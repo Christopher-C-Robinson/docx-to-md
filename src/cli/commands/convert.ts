@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
-import { resolveEngine } from '../../core/engines/registry';
+import { EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
+import { convertDocx } from '../../core/convert';
 
 interface ConvertCommandOptions {
   engine?: string;
@@ -30,20 +30,19 @@ export async function convertCommand(
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-  const options: ConversionOptions = {
-    engine: opts.engine as EngineType | undefined,
-    format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-    mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
-    trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
-    luaFilters: opts.luaFilter,
-    timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
-  };
-
   try {
-    const engine = await resolveEngine(options.engine);
-    console.error(`Using engine: ${engine.name}`);
+    const result = await convertDocx({
+      inputPath,
+      outputPath,
+      engine: opts.engine as EngineType | undefined,
+      format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
+      mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
+      trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
+      luaFilters: opts.luaFilter,
+      timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
+    });
 
-    const result = await engine.convert(inputPath, outputPath, options);
+    console.error(`Using engine: ${result.engineName}`);
 
     for (const warning of result.warnings) {
       console.error(`Warning: ${warning}`);
