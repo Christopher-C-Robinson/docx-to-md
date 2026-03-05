@@ -2,7 +2,7 @@
 
 > Reliable DOCX → Markdown conversion with a pluggable engine architecture.
 
-[![CI](https://github.com/YOUR_ORG/docx-to-md/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/docx-to-md/actions/workflows/ci.yml)
+[![CI](https://github.com/Christopher-C-Robinson/docx-to-md/actions/workflows/ci.yml/badge.svg)](https://github.com/Christopher-C-Robinson/docx-to-md/actions/workflows/ci.yml)
 
 ## Features
 

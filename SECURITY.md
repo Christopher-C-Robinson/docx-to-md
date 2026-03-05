@@ -9,7 +9,7 @@
 ## Reporting a Vulnerability
 
 Please report security vulnerabilities by opening a GitHub Security Advisory at:
-https://github.com/YOUR_ORG/docx-to-md/security/advisories/new
+https://github.com/Christopher-C-Robinson/docx-to-md/security/advisories/new
 
 Do **not** open a public issue for security vulnerabilities.
 
