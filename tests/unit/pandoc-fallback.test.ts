@@ -8,7 +8,7 @@ function makeFakeAdapter(result: Partial<ConversionResult> = {}): EngineAdapter 
     get called() { return called; },
     name: 'mammoth' as EngineType,
     isAvailable: async () => true,
-    async convert(_inputPath, _outputPath, _options): Promise<ConversionResult> {
+    async convert(_inputPath: string, _outputPath: string, _options: ConversionOptions): Promise<ConversionResult> {
       called = true;
       return {
         markdown: '# Fallback result\n',
@@ -28,10 +28,10 @@ describe('PandocAdapter – failure fallback', () => {
     expect(adapter.name).toBe('pandoc');
   });
 
-  test('default constructor installs a fallback: falls back when pandoc fails', async () => {
-    // Use a non-existent file to make pandoc fail; default fallback (MammothAdapter) will also
-    // fail but the important thing is that the pandoc failure path reaches the fallback branch.
-    // We verify by using an injected fake adapter instead.
+  test('uses injected fallback adapter when pandoc fails', async () => {
+    // Use a non-existent file to make pandoc fail; the important thing is that the pandoc
+    // failure path reaches the fallback branch. We verify this by injecting a fake adapter
+    // and asserting its result is returned.
     const fakeAdapter = makeFakeAdapter({ markdown: '# Fallback\n' });
     const adapter = new PandocAdapter(fakeAdapter);
     const result = await adapter.convert(
@@ -87,5 +87,23 @@ describe('PandocAdapter – failure fallback', () => {
       adapter.convert('/tmp/nonexistent-file.docx', '/tmp/nonexistent-output.md', { format: 'gfm' })
     ).rejects.toThrow();
   });
-});
 
+  test('throws combined error when pandoc and fallback both fail', async () => {
+    const failingFallback: EngineAdapter = {
+      name: 'mammoth',
+      isAvailable: async () => true,
+      async convert(): Promise<ConversionResult> {
+        throw new Error('fallback exploded');
+      },
+    };
+
+    const adapter = new PandocAdapter(failingFallback);
+    await expect(
+      adapter.convert('/tmp/nonexistent-file.docx', '/tmp/nonexistent-output.md', { format: 'gfm' })
+    ).rejects.toThrow('Pandoc conversion failed and fallback adapter "mammoth" also failed');
+
+    await expect(
+      adapter.convert('/tmp/nonexistent-file.docx', '/tmp/nonexistent-output.md', { format: 'gfm' })
+    ).rejects.toMatchObject({ errors: expect.any(Array) });
+  });
+});

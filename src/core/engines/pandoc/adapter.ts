@@ -61,11 +61,20 @@ export class PandocAdapter implements EngineAdapter {
       if (this.fallback) {
         const errMsg = err instanceof Error ? err.message : String(err);
         warnings.push(`Pandoc failed: ${errMsg}; falling back to ${this.fallback.name}`);
-        const fallbackResult = await this.fallback.convert(inputPath, outputPath, options);
-        return {
-          ...fallbackResult,
-          warnings: [...warnings, ...fallbackResult.warnings],
-        };
+        try {
+          const fallbackResult = await this.fallback.convert(inputPath, outputPath, options);
+          return {
+            ...fallbackResult,
+            warnings: [...warnings, ...fallbackResult.warnings],
+          };
+        } catch (fallbackErr) {
+          const combinedError = new Error(
+            `Pandoc conversion failed and fallback adapter "${this.fallback.name}" also failed`
+          ) as Error & { cause?: unknown; errors?: unknown[] };
+          combinedError.cause = err;
+          combinedError.errors = [err, fallbackErr];
+          throw combinedError;
+        }
       }
       throw err;
     }
