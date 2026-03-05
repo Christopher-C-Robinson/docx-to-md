@@ -110,7 +110,12 @@ export async function batchCommand(
 }
 
 function resolveCliPath(value: string): string {
-  return path.isAbsolute(value) ? value : path.resolve(value);
+  if (path.isAbsolute(value)) {
+    // Keep absolute paths rooted as provided (avoid injecting cwd drive letters on Windows),
+    // but normalize separators so downstream path operations stay consistent.
+    return path.normalize(value);
+  }
+  return path.resolve(value);
 }
 
 function findDocxFiles(dir: string): string[] {
