@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>docx → Markdown Converter</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-8hAfZQ5Oqos5HLTHfR0sLvvwpcVI4fGhV+0Dj/HCcpkKaacivQs82XHmvLOnAhXn" crossorigin="anonymous"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -492,7 +492,7 @@
       try {
         await navigator.clipboard.writeText(markdownRaw);
         copyMdBtn.textContent = '✓ Copied!';
-        setTimeout(() => { copyMdBtn.innerHTML = '📋 Copy'; }, 2000);
+        setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       } catch {
         copyMdBtn.textContent = 'Copy failed';
       }

@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
-import * as os from 'os';
 import { createApp } from '../../src/api/server';
 
 const MAMMOTH_TEST_DATA = path.resolve(
@@ -137,6 +136,22 @@ describe('API server', () => {
     const res = await get(`/api/images/${sessionId}/${img.name}`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/image\//);
+  });
+
+
+
+  test('GET /api/images rejects traversal-like filenames', async () => {
+    const convert = await postConvert(IMAGE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/images/${sessionId}/..%2F..%2Fetc%2Fpasswd`);
+    expect(res.status).toBe(400);
+  });
+
+  test('GET /api/images returns 404 for sanitized-but-missing filename', async () => {
+    const convert = await postConvert(IMAGE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/images/${sessionId}/missing image?.png`);
+    expect(res.status).toBe(404);
   });
 
   test('GET /api/download/images/:sessionId returns a zip', async () => {

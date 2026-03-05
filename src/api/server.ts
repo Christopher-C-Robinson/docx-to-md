@@ -16,6 +16,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 export interface SessionData {
+  tempRootDir: string;
   markdownPath: string;
   mediaDir: string;
   createdAt: number;
@@ -33,7 +34,7 @@ function cleanupSessions(): void {
   for (const [id, session] of sessions.entries()) {
     if (session.createdAt < cutoff) {
       try {
-        fs.rmSync(path.dirname(session.markdownPath), { recursive: true, force: true });
+        fs.rmSync(session.tempRootDir, { recursive: true, force: true });
       } catch {
         // best effort
       }
@@ -44,6 +45,9 @@ function cleanupSessions(): void {
 
 /** Resolve a session-scoped path and verify it stays within the session dir */
 function resolveSessionPath(sessionDir: string, filename: string): string {
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    throw new Error('Path traversal detected');
+  }
   const basename = path.basename(filename);
   const safe = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
   const resolved = path.resolve(sessionDir, safe);
@@ -122,8 +126,7 @@ export function createApp(): express.Application {
       const uploadDir = req.file.destination;
       const inputPath = req.file.path;
       const sessionId = createSessionId();
-      const sessionDir = path.join(uploadDir, sessionId);
-      fs.mkdirSync(sessionDir, { recursive: true });
+      const sessionDir = uploadDir;
       const outputPath = path.join(sessionDir, 'output.md');
       const mediaDir = path.join(sessionDir, 'media');
 
@@ -139,6 +142,7 @@ export function createApp(): express.Application {
           : [];
 
         sessions.set(sessionId, {
+          tempRootDir: sessionDir,
           markdownPath: outputPath,
           mediaDir,
           createdAt: Date.now(),
@@ -159,8 +163,15 @@ export function createApp(): express.Application {
         } catch {
           // best effort
         }
-        const message = err instanceof Error ? err.message : String(err);
-        res.status(500).json({ error: `Conversion failed: ${message}` });
+        const errorId =
+          typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : crypto.randomBytes(16).toString('hex');
+        console.error(`Conversion failed [${errorId}]`, err);
+        res.status(500).json({
+          error: 'Conversion failed due to an internal error. Please try again later.',
+          errorId,
+        });
       }
     }
   );
@@ -221,7 +232,11 @@ export function createApp(): express.Application {
 
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', (err) => {
-      res.status(500).json({ error: `Archive error: ${err.message}` });
+      if (res.headersSent || res.writableEnded) {
+        res.destroy(err);
+        return;
+      }
+      res.status(500).json({ error: 'Failed to archive images.' });
     });
     archive.pipe(res);
     archive.directory(session.mediaDir, false);
