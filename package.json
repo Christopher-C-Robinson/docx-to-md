@@ -7,6 +7,7 @@
     "build": "tsc",
     "test": "jest",
     "lint": "tsc --noEmit",
+    "serve": "node dist/api/server.js",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -23,15 +24,22 @@
   "homepage": "https://github.com/Christopher-C-Robinson/docx-to-md#readme",
   "dependencies": {
     "commander": "^14.0.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.0",
     "mammoth": "^1.11.0",
+    "multer": "^2.1.1",
     "turndown": "^7.2.2",
     "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.0.0",
     "@types/node": "^25.3.3",
+    "@types/supertest": "^7.2.0",
     "@types/turndown": "^5.0.6",
     "jest": "^30.2.0",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "typescript": "^5.9.3"
   },
