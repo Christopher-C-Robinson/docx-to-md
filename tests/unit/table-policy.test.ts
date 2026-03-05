@@ -25,10 +25,12 @@ describe('Table Fallback Policy', () => {
   test('simple table produces GFM pipe table', () => {
     const root = makeTable([['Name', 'Age'], ['Alice', '30'], ['Bob', '25']]);
     const md = formatter.serialize(root);
-    expect(md).toContain('| Name | Age |');
-    expect(md).toContain('| --- | --- |');
-    expect(md).toContain('| Alice | 30 |');
-    expect(md).toContain('| Bob | 25 |');
+    // Columns are padded to the widest value in each column:
+    // col-0 max = len('Alice') = 5, col-1 max = len('Age') = 3
+    expect(md).toContain('| Name  | Age |');
+    expect(md).toContain('| ----- | --- |');
+    expect(md).toContain('| Alice | 30  |');
+    expect(md).toContain('| Bob   | 25  |');
   });
 
   test('table with merged cells falls back to HTML', () => {
