@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pandoc \
     libreoffice-writer \
     fonts-liberation \
+    && soffice --version >/dev/null 2>&1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
