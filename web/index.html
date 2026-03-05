@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>docx → Markdown Converter</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-8hAfZQ5Oqos5HLTHfR0sLvvwpcVI4fGhV+0Dj/HCcpkKaacivQs82XHmvLOnAhXn" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #6c7de8;
+      --accent-hover: #8492f0;
+      --text: #e2e4f0;
+      --text-muted: #7b80a0;
+      --danger: #e86c6c;
+      --success: #6ce8a8;
+      --warn: #e8c46c;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    header .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    header .logo span { color: var(--accent); }
+
+    header .badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--accent);
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    main {
+      flex: 1;
+      padding: 32px;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Drop zone ─────────────────────────────── */
+    #drop-zone {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108, 125, 232, 0.08);
+    }
+
+    #drop-zone .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    #drop-zone h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    #drop-zone p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    #drop-zone .browse {
+      color: var(--accent);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    #file-input { display: none; }
+
+    /* ── Status / progress ─────────────────────── */
+    #status-bar {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      font-size: 14px;
+    }
+
+    #status-bar.visible { display: flex; }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #status-bar.error { border-color: var(--danger); }
+    #status-bar.error .spinner { display: none; }
+    #status-text { flex: 1; }
+    #status-bar.error #status-text { color: var(--danger); }
+
+    /* ── Warnings ──────────────────────────────── */
+    #warnings-box {
+      display: none;
+      background: rgba(232, 196, 108, 0.1);
+      border: 1px solid var(--warn);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+    }
+
+    #warnings-box.visible { display: block; }
+
+    #warnings-box ul {
+      list-style: disc;
+      padding-left: 20px;
+      font-size: 13px;
+      color: var(--warn);
+      margin-top: 6px;
+    }
+
+    #warnings-box strong { color: var(--warn); font-size: 13px; }
+
+    /* ── Results ───────────────────────────────── */
+    #result-section { display: none; flex-direction: column; gap: 20px; }
+    #result-section.visible { display: flex; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar h3 {
+      font-size: 15px;
+      font-weight: 600;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-secondary:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── Tab row ───────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: -1px;
+    }
+
+    .tab-bar button {
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 0;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 10px 18px;
+      font-size: 13px;
+    }
+
+    .tab-bar button.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── Panels ────────────────────────────────── */
+    .panel-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    #md-raw {
+      display: block;
+      width: 100%;
+      min-height: 400px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 20px;
+      border: none;
+      resize: vertical;
+      outline: none;
+    }
+
+    #md-preview {
+      min-height: 400px;
+      padding: 24px 28px;
+      overflow: auto;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    #md-preview h1, #md-preview h2, #md-preview h3,
+    #md-preview h4, #md-preview h5, #md-preview h6 {
+      margin: 1.2em 0 0.5em;
+      line-height: 1.3;
+      color: var(--text);
+    }
+
+    #md-preview h1 { font-size: 1.7em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    #md-preview h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+    #md-preview p { margin: 0.6em 0; }
+    #md-preview a { color: var(--accent); }
+    #md-preview code {
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88em;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+    #md-preview pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 0.8em 0;
+    }
+    #md-preview pre code { background: transparent; padding: 0; }
+    #md-preview blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 0.8em 0;
+      padding: 4px 16px;
+      color: var(--text-muted);
+    }
+    #md-preview table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.8em 0;
+      font-size: 14px;
+    }
+    #md-preview th, #md-preview td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    #md-preview th { background: var(--surface2); font-weight: 600; }
+    #md-preview ul, #md-preview ol { padding-left: 24px; margin: 0.5em 0; }
+    #md-preview li { margin: 0.2em 0; }
+    #md-preview img { max-width: 100%; border-radius: 4px; margin: 4px 0; }
+    #md-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
+
+    /* ── Image gallery ─────────────────────────── */
+    #images-section { display: none; flex-direction: column; gap: 14px; }
+    #images-section.visible { display: flex; }
+
+    .img-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .img-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .img-card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: var(--surface2);
+    }
+
+    .img-card .img-name {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 6px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Reset button ──────────────────────────── */
+    #reset-btn { align-self: flex-start; }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">docx<span>→</span>md</div>
+    <div class="badge">Converter</div>
+  </header>
+
+  <main>
+    <!-- Drop zone -->
+    <div id="drop-zone" role="button" tabindex="0" aria-label="Drop a .docx file here or click to browse">
+      <span class="icon">📄</span>
+      <h2>Drop your Word document here</h2>
+      <p>or <span class="browse" id="browse-link">click to browse</span> · .docx files only · max 50 MB</p>
+      <input type="file" id="file-input" accept=".docx" aria-hidden="true" />
+    </div>
+
+    <!-- Status bar -->
+    <div id="status-bar" role="status" aria-live="polite">
+      <div class="spinner" id="spinner"></div>
+      <span id="status-text">Converting…</span>
+    </div>
+
+    <!-- Warnings -->
+    <div id="warnings-box" role="alert">
+      <strong>⚠ Conversion warnings</strong>
+      <ul id="warnings-list"></ul>
+    </div>
+
+    <!-- Markdown result -->
+    <section id="result-section" aria-label="Conversion result">
+      <div class="toolbar">
+        <h3>Markdown</h3>
+        <button class="btn-primary" id="dl-md-btn">⬇ Download .md</button>
+        <button class="btn-secondary" id="copy-md-btn">📋 Copy</button>
+      </div>
+      <div class="tab-bar" role="tablist">
+        <button role="tab" class="active" id="tab-preview" aria-selected="true" aria-controls="md-preview">Preview</button>
+        <button role="tab" id="tab-raw" aria-selected="false" aria-controls="md-raw">Raw</button>
+      </div>
+      <div class="panel-wrap">
+        <div id="md-preview" role="tabpanel" aria-labelledby="tab-preview"></div>
+        <textarea id="md-raw" role="tabpanel" aria-labelledby="tab-raw" readonly style="display:none"></textarea>
+      </div>
+    </section>
+
+    <!-- Images -->
+    <section id="images-section" aria-label="Extracted images">
+      <div class="toolbar">
+        <h3>Extracted Images</h3>
+        <button class="btn-primary" id="dl-imgs-btn">⬇ Download All (zip)</button>
+      </div>
+      <div class="img-grid" id="img-grid"></div>
+    </section>
+
+    <button class="btn-secondary" id="reset-btn" style="display:none">↺ Convert another file</button>
+  </main>
+
+  <footer>docx-to-md · open source document converter</footer>
+
+  <script>
+    // Prevent XSS: all user-supplied content goes through these helpers
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+    // Marked is loaded from CDN (global `marked`)
+    // Configure to sanitize rendered HTML (use DOMPurify-style via option)
+    let markdownRaw = '';
+    let sessionId = '';
+
+    const dropZone   = document.getElementById('drop-zone');
+    const fileInput  = document.getElementById('file-input');
+    const statusBar  = document.getElementById('status-bar');
+    const statusText = document.getElementById('status-text');
+    const spinner    = document.getElementById('spinner');
+    const warningsBox  = document.getElementById('warnings-box');
+    const warningsList = document.getElementById('warnings-list');
+    const resultSection  = document.getElementById('result-section');
+    const imagesSection  = document.getElementById('images-section');
+    const mdPreview = document.getElementById('md-preview');
+    const mdRaw     = document.getElementById('md-raw');
+    const imgGrid   = document.getElementById('img-grid');
+    const resetBtn  = document.getElementById('reset-btn');
+    const dlMdBtn   = document.getElementById('dl-md-btn');
+    const dlImgsBtn = document.getElementById('dl-imgs-btn');
+    const copyMdBtn = document.getElementById('copy-md-btn');
+    const tabPreview = document.getElementById('tab-preview');
+    const tabRaw    = document.getElementById('tab-raw');
+
+    // ── Tab switching ──────────────────────────────────────────────────────
+    tabPreview.addEventListener('click', () => {
+      tabPreview.classList.add('active'); tabPreview.setAttribute('aria-selected','true');
+      tabRaw.classList.remove('active'); tabRaw.setAttribute('aria-selected','false');
+      mdPreview.style.display = ''; mdRaw.style.display = 'none';
+    });
+    tabRaw.addEventListener('click', () => {
+      tabRaw.classList.add('active'); tabRaw.setAttribute('aria-selected','true');
+      tabPreview.classList.remove('active'); tabPreview.setAttribute('aria-selected','false');
+      mdPreview.style.display = 'none'; mdRaw.style.display = '';
+    });
+
+    // ── Drag & drop ────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleFile(file);
+    });
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+    document.getElementById('browse-link').addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+    fileInput.addEventListener('change', () => { if (fileInput.files?.[0]) handleFile(fileInput.files[0]); });
+
+    // ── Reset ──────────────────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+      markdownRaw = ''; sessionId = '';
+      resultSection.classList.remove('visible');
+      imagesSection.classList.remove('visible');
+      statusBar.classList.remove('visible','error');
+      warningsBox.classList.remove('visible');
+      warningsList.innerHTML = '';
+      imgGrid.innerHTML = '';
+      mdPreview.innerHTML = ''; mdRaw.value = '';
+      resetBtn.style.display = 'none';
+      dropZone.style.display = '';
+      fileInput.value = '';
+    });
+
+    // ── Copy to clipboard ──────────────────────────────────────────────────
+    copyMdBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(markdownRaw);
+        copyMdBtn.textContent = '✓ Copied!';
+        setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
+      } catch {
+        copyMdBtn.textContent = 'Copy failed';
+      }
+    });
+
+    // ── Download markdown ──────────────────────────────────────────────────
+    dlMdBtn.addEventListener('click', () => {
+      if (!sessionId) return;
+      window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
+    });
+
+    // ── Download images ────────────────────────────────────────────────────
+    dlImgsBtn.addEventListener('click', () => {
+      if (!sessionId) return;
+      window.location.href = `/api/download/images/${encodeURIComponent(sessionId)}`;
+    });
+
+    // ── Convert ────────────────────────────────────────────────────────────
+    async function handleFile(file) {
+      if (!file.name.toLowerCase().endsWith('.docx')) {
+        showError('Only .docx files are supported.');
+        return;
+      }
+
+      dropZone.style.display = 'none';
+      resultSection.classList.remove('visible');
+      imagesSection.classList.remove('visible');
+      warningsBox.classList.remove('visible');
+      resetBtn.style.display = 'none';
+      showStatus('Converting…');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/convert', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || `Server error: ${res.status}`);
+          return;
+        }
+
+        sessionId = data.sessionId;
+        markdownRaw = data.markdown || '';
+
+        // Warnings
+        if (data.warnings && data.warnings.length > 0) {
+          warningsList.innerHTML = data.warnings.map(w => `<li>${esc(w)}</li>`).join('');
+          warningsBox.classList.add('visible');
+        }
+
+        // Markdown preview (sanitised via marked options)
+        mdRaw.value = markdownRaw;
+        mdPreview.innerHTML = DOMPurify.sanitize(marked.parse(markdownRaw, { breaks: false, gfm: true }));
+        resultSection.classList.add('visible');
+
+        // Images
+        if (data.images && data.images.length > 0) {
+          imgGrid.innerHTML = data.images.map(img =>
+            `<div class="img-card">
+              <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy" />
+              <div class="img-name" title="${esc(img.name)}">${esc(img.name)}</div>
+            </div>`
+          ).join('');
+          imagesSection.classList.add('visible');
+        }
+
+        statusBar.classList.remove('visible');
+        resetBtn.style.display = '';
+      } catch (err) {
+        showError('Network error. Is the server running?');
+      }
+    }
+
+    function showStatus(msg) {
+      statusText.textContent = msg;
+      statusBar.classList.remove('error');
+      spinner.style.display = '';
+      statusBar.classList.add('visible');
+    }
+
+    function showError(msg) {
+      statusText.textContent = msg;
+      statusBar.classList.add('visible','error');
+      spinner.style.display = 'none';
+      dropZone.style.display = '';
+      resetBtn.style.display = '';
+    }
+  </script>
+</body>
+</html>
