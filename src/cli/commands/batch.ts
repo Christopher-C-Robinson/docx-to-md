@@ -18,14 +18,14 @@ export async function batchCommand(
   inputDir: string,
   opts: BatchCommandOptions
 ): Promise<void> {
-  const resolvedInput = resolveCliPath(inputDir);
+  const resolvedInput = path.resolve(inputDir);
 
   if (!fs.existsSync(resolvedInput)) {
     console.error(`Error: Input directory not found: ${resolvedInput}`);
     process.exit(1);
   }
 
-  const outDir = opts.out ? resolveCliPath(opts.out) : resolvedInput;
+  const outDir = opts.out ? resolveOutputPath(opts.out) : resolvedInput;
   fs.mkdirSync(outDir, { recursive: true });
 
   const rawConcurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
@@ -44,7 +44,7 @@ export async function batchCommand(
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,
     format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-    mediaDir: opts.mediaDir ? resolveCliPath(opts.mediaDir) : undefined,
+    mediaDir: opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined,
     trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
     timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
   };
@@ -109,7 +109,7 @@ export async function batchCommand(
   if (failed > 0) process.exit(1);
 }
 
-function resolveCliPath(value: string): string {
+function resolveOutputPath(value: string): string {
   if (path.isAbsolute(value)) {
     // Keep absolute paths rooted as provided (avoid injecting cwd drive letters on Windows),
     // but normalize separators so downstream path operations stay consistent.
