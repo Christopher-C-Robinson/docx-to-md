@@ -30,7 +30,7 @@ program
   .option('--out <dir>', 'Output directory')
   .option('--media-dir <dir>', 'Directory for extracted media assets')
   .option('--track-changes <policy>', 'Tracked changes policy (accept|reject|all)')
-  .option('--jobs <n>', 'Number of parallel jobs', '4')
+  .option('--jobs <n>', 'Number of parallel jobs (default: number of CPU cores)')
   .option('--timeout <ms>', 'Per-file timeout in milliseconds')
   .action(batchCommand);
 

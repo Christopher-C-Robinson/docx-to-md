@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
@@ -24,15 +25,26 @@ export async function batchCommand(
     process.exit(1);
   }
 
-  const outDir = opts.out ? path.resolve(opts.out) : resolvedInput;
+  const outDir = opts.out ? resolveOutputPath(opts.out) : resolvedInput;
   fs.mkdirSync(outDir, { recursive: true });
 
-  const concurrency = parseInt(opts.jobs ?? '4', 10);
+  const rawConcurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
+  const concurrency = Math.floor(rawConcurrency);
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    console.error(
+      `Error: Invalid concurrency${
+        opts.jobs
+          ? ` value for --jobs: ${opts.jobs}`
+          : ` detected from CPU count: ${rawConcurrency}`
+      }. Please specify a positive integer.`
+    );
+    process.exit(1);
+  }
 
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,
     format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-    mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
+    mediaDir: opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined,
     trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
     timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
   };
@@ -95,6 +107,15 @@ export async function batchCommand(
   console.error(`\nBatch complete: ${succeeded} succeeded, ${failed} failed`);
 
   if (failed > 0) process.exit(1);
+}
+
+function resolveOutputPath(value: string): string {
+  if (path.isAbsolute(value)) {
+    // Keep absolute paths rooted as provided (avoid injecting cwd drive letters on Windows),
+    // but normalize separators so downstream path operations stay consistent.
+    return path.normalize(value);
+  }
+  return path.resolve(value);
 }
 
 function findDocxFiles(dir: string): string[] {
