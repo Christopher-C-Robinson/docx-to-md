@@ -3,17 +3,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { EngineAdapter } from '../interface';
 import { ConversionOptions, ConversionResult, EngineType } from '../../types';
+import { MammothAdapter } from '../mammoth/adapter';
 
 const PANDOC_TIMEOUT_MS = 60_000;
 
 export class PandocAdapter implements EngineAdapter {
   readonly name: EngineType = 'pandoc';
+  private readonly fallback: EngineAdapter | null;
+
+  constructor(fallback?: EngineAdapter | null) {
+    this.fallback = fallback !== undefined ? fallback : new MammothAdapter();
+  }
 
   async isAvailable(): Promise<boolean> {
     return new Promise(resolve => {
       const proc = spawn('pandoc', ['--version']);
       proc.on('error', () => resolve(false));
-      proc.on('close', code => resolve(code === 0));
+      proc.on('close', (code: number | null) => resolve(code === 0));
     });
   }
 
@@ -49,7 +55,29 @@ export class PandocAdapter implements EngineAdapter {
 
     cmd.push('-o', outputPath, inputPath);
 
-    await this.runPandoc(cmd, timeout);
+    try {
+      await this.runPandoc(cmd, timeout);
+    } catch (err) {
+      if (this.fallback) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Pandoc failed: ${errMsg}; falling back to ${this.fallback.name}`);
+        try {
+          const fallbackResult = await this.fallback.convert(inputPath, outputPath, options);
+          return {
+            ...fallbackResult,
+            warnings: [...warnings, ...fallbackResult.warnings],
+          };
+        } catch (fallbackErr) {
+          const combinedError = new Error(
+            `Pandoc conversion failed and fallback adapter "${this.fallback.name}" also failed`
+          ) as Error & { cause?: unknown; errors?: unknown[] };
+          combinedError.cause = err;
+          combinedError.errors = [err, fallbackErr];
+          throw combinedError;
+        }
+      }
+      throw err;
+    }
 
     const markdown = fs.readFileSync(outputPath, 'utf8');
 
@@ -77,8 +105,8 @@ export class PandocAdapter implements EngineAdapter {
       }, timeout);
 
       proc.stderr.on('data', (data: Buffer) => stderr.push(data.toString()));
-      proc.on('error', err => { clearTimeout(timer); reject(err); });
-      proc.on('close', code => {
+      proc.on('error', (err: Error) => { clearTimeout(timer); reject(err); });
+      proc.on('close', (code: number | null) => {
         clearTimeout(timer);
         if (timedOut) return;
         if (code !== 0) {
