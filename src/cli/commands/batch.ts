@@ -28,7 +28,18 @@ export async function batchCommand(
   const outDir = opts.out ? path.resolve(opts.out) : resolvedInput;
   fs.mkdirSync(outDir, { recursive: true });
 
-  const concurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
+  const rawConcurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
+  const concurrency = Math.floor(rawConcurrency);
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    console.error(
+      `Error: Invalid concurrency${
+        opts.jobs
+          ? ` value for --jobs: ${opts.jobs}`
+          : ` detected from CPU count: ${rawConcurrency}`
+      }. Please specify a positive integer.`
+    );
+    process.exit(1);
+  }
 
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,

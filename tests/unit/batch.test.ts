@@ -9,6 +9,12 @@ import * as path from 'path';
 const mockExistsSync = jest.fn();
 const mockMkdirSync = jest.fn();
 const mockReaddirSync = jest.fn();
+const mockCpus = jest.fn();
+
+jest.mock('os', () => ({
+  cpus: (...args: unknown[]) => mockCpus(...args),
+}));
+
 jest.mock('fs', () => ({
   existsSync: (...args: unknown[]) => mockExistsSync(...args),
   mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
@@ -48,6 +54,7 @@ describe('batch command', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCpus.mockReturnValue(Array.from({ length: 4 }, () => ({} as os.CpuInfo)));
     jest.spyOn(process, 'exit').mockImplementation((_code?: string | number | null) => {
       throw new Error(`process.exit(${_code})`);
     });
@@ -116,6 +123,21 @@ describe('batch command', () => {
 
     expect(mockConvert).toHaveBeenCalledTimes(fileCount);
     expect(maxConcurrent).toBeLessThanOrEqual(cpuCount);
+  });
+
+  test('exits with error when --jobs is not a positive integer', async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(batchCommand(inputDir, { jobs: 'foo' })).rejects.toThrow('process.exit(1)');
+    expect(mockResolveEngine).not.toHaveBeenCalled();
+  });
+
+  test('exits with error when detected CPU count is invalid', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockCpus.mockReturnValue([]);
+
+    await expect(batchCommand(inputDir, {})).rejects.toThrow('process.exit(1)');
+    expect(mockResolveEngine).not.toHaveBeenCalled();
   });
 
   test('respects custom --jobs concurrency limit', async () => {
