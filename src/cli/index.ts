@@ -13,7 +13,7 @@ program
 program
   .command('convert <input>')
   .description('Convert a single DOCX file to Markdown')
-  .option('-e, --engine <engine>', 'Conversion engine (pandoc|mammoth|libreoffice)', 'pandoc')
+  .option('-e, --engine <engine>', 'Conversion engine (pandoc|mammoth|libreoffice); auto-detected if omitted')
   .option('-t, --to <format>', 'Output Markdown format (gfm|commonmark)', 'gfm')
   .option('-o, --output <path>', 'Output file path')
   .option('--media-dir <dir>', 'Directory for extracted media assets')
