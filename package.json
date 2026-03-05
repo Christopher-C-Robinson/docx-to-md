@@ -9,7 +9,13 @@
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "serve": "node dist/api/index.js",
-    "dev": "npm run build && npm run serve"
+    "dev": "npm run build && npm run serve",
+    "electron:build": "tsc --project tsconfig.electron.json",
+    "electron:dev": "npm run build && npm run electron:build && electron dist-electron/electron/main.js",
+    "electron:dist": "npm run build && npm run electron:build && electron-builder --config electron-builder.yml",
+    "electron:dist:mac": "npm run build && npm run electron:build && electron-builder --mac --config electron-builder.yml",
+    "electron:dist:win": "npm run build && npm run electron:build && electron-builder --win --config electron-builder.yml",
+    "electron:dist:linux": "npm run build && npm run electron:build && electron-builder --linux --config electron-builder.yml"
   },
   "repository": {
     "type": "git",
@@ -41,6 +47,8 @@
     "@types/node": "^25.3.3",
     "@types/supertest": "^7.2.0",
     "@types/turndown": "^5.0.6",
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1",
     "jest": "^30.2.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",

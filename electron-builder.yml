@@ -1,0 +1,60 @@
+appId: com.docxtomd.app
+productName: docx2md
+copyright: Copyright © 2024 docx-to-md contributors
+
+# Entry point: compiled Electron main process
+main: dist-electron/electron/main.js
+
+directories:
+  output: release
+  buildResources: build-resources
+
+# Files to bundle inside the app
+files:
+  - dist-electron/**/*
+  - dist/**/*
+  - web/**/*
+  - node_modules/**/*
+  - package.json
+
+# Do not include dev-only files
+npmRebuild: true
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: build-resources/icon.icns
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build-resources/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  installerLanguages:
+    - en_US
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: build-resources/icon.png
+  category: Office
