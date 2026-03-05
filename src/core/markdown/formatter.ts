@@ -1,6 +1,9 @@
 import { AstNode, RootNode, HeadingNode, ListNode, ListItemNode, TableNode, TableRowNode, LinkNode, ImageNode, FootnoteNode, CodeNode, Parent } from '../ast/types';
 import { MarkdownFormat } from '../types';
 
+/** Number of spaces used to indent each level of list continuation lines. */
+const LIST_CONTINUATION_SPACES = '  ';
+
 export class MarkdownFormatter {
   private format: MarkdownFormat;
 
@@ -56,14 +59,14 @@ export class MarkdownFormatter {
     let idx = node.start ?? 1;
     return node.children.map(child => {
       const prefix = node.ordered ? `${idx++}. ` : '- ';
-      const childContent = this.listItem(child as ListItemNode, indent + '  ', prefix);
+      const childContent = this.listItem(child as ListItemNode, indent + LIST_CONTINUATION_SPACES, prefix);
       return childContent;
     }).join('') + '\n';
   }
 
   private listItem(node: ListItemNode, indent: string, prefix = '- '): string {
     const lines = this.serializeChildren(node, indent).trim().split('\n');
-    const continuation = lines.slice(1).map(l => `${indent}  ${l}`).join('\n');
+    const continuation = lines.slice(1).map(l => `${indent}${LIST_CONTINUATION_SPACES}${l}`).join('\n');
     return `${indent}${prefix}${lines[0]}\n${continuation ? continuation + '\n' : ''}`;
   }
 

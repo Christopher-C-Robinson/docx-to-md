@@ -5,7 +5,7 @@ import * as os from 'os';
 
 describe('Pandoc Integration', () => {
   let adapter: PandocAdapter;
-  let pandocAvailable: boolean;
+  let pandocAvailable = false;
   let tmpDir: string;
 
   beforeAll(async () => {
