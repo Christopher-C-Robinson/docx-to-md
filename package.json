@@ -1,0 +1,41 @@
+{
+  "name": "docx-to-md",
+  "version": "0.1.0",
+  "description": "Reliable DOCX to Markdown conversion with pluggable engine architecture",
+  "main": "dist/core/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Christopher-C-Robinson/docx-to-md.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Christopher-C-Robinson/docx-to-md/issues"
+  },
+  "homepage": "https://github.com/Christopher-C-Robinson/docx-to-md#readme",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "mammoth": "^1.11.0",
+    "turndown": "^7.2.2",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.3.3",
+    "@types/turndown": "^5.0.6",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3"
+  },
+  "bin": {
+    "docx2md": "dist/cli/index.js"
+  }
+}
