@@ -5,6 +5,8 @@ import * as os from 'os';
 
 const CORPUS_DIR = path.join(__dirname);
 
+const normalizeMarkdown = (value: string): string => value.replace(/\r\n/g, '\n').replace(/\s*$/, '\n');
+
 /**
  * Corpus regression tests – convert each *.docx fixture and compare the output
  * against the corresponding golden *.md file stored alongside it.
@@ -39,28 +41,38 @@ describe('Corpus regression', () => {
   describe.each(docxFiles)('%s', (docxFile) => {
     const inputPath = path.join(CORPUS_DIR, docxFile);
     const goldenPath = path.join(CORPUS_DIR, docxFile.replace(/\.docx$/, '.md'));
+    let outputPath: string;
+    let markdown: string;
+
+    beforeAll(async () => {
+      outputPath = path.join(tmpDir, `golden-${docxFile.replace(/\.docx$/, '.md')}`);
+      const result = await adapter.convert(inputPath, outputPath, { format: 'gfm' });
+      markdown = result.markdown;
+    });
 
     test('converts without error', async () => {
-      const outputPath = path.join(tmpDir, docxFile.replace(/\.docx$/, '.md'));
-      const result = await adapter.convert(inputPath, outputPath, { format: 'gfm' });
-      expect(result.markdown.length).toBeGreaterThan(0);
+      expect(markdown.length).toBeGreaterThan(0);
       expect(fs.existsSync(outputPath)).toBe(true);
     });
 
-    if (fs.existsSync(goldenPath)) {
-      test('output matches golden file', async () => {
-        const outputPath = path.join(tmpDir, `golden-${docxFile.replace(/\.docx$/, '.md')}`);
-        const result = await adapter.convert(inputPath, outputPath, { format: 'gfm' });
-        const golden = fs.readFileSync(goldenPath, 'utf8');
+    test('output matches golden file', async () => {
+      const goldenExists = fs.existsSync(goldenPath);
 
-        if (process.env['UPDATE_GOLDEN'] === '1') {
-          fs.writeFileSync(goldenPath, result.markdown, 'utf8');
-          return;
-        }
+      if (process.env['UPDATE_GOLDEN'] === '1') {
+        fs.writeFileSync(goldenPath, normalizeMarkdown(markdown), 'utf8');
+        return;
+      }
 
-        expect(result.markdown).toBe(golden);
-      });
-    }
+      if (!goldenExists) {
+        throw new Error(
+          `Missing golden file for ${docxFile} at ${goldenPath}. ` +
+            'To create it, delete any existing .md and re-run with UPDATE_GOLDEN=1.'
+        );
+      }
+
+      const golden = fs.readFileSync(goldenPath, 'utf8');
+      expect(normalizeMarkdown(markdown)).toBe(normalizeMarkdown(golden));
+    });
   });
 });
 
