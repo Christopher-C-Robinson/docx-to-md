@@ -1,7 +1,8 @@
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
-import { convertDocx } from '../../core/convert';
+import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
+import { resolveEngine } from '../../core/engines/registry';
 
 interface BatchCommandOptions {
   out?: string;
@@ -24,16 +25,29 @@ export async function batchCommand(
     process.exit(1);
   }
 
-  const outDir = opts.out ? path.resolve(opts.out) : resolvedInput;
+  const outDir = opts.out ? resolveOutputPath(opts.out) : resolvedInput;
   fs.mkdirSync(outDir, { recursive: true });
 
-  const concurrency = parseInt(opts.jobs ?? '4', 10);
+  const rawConcurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
+  const concurrency = Math.floor(rawConcurrency);
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    console.error(
+      `Error: Invalid concurrency${
+        opts.jobs
+          ? ` value for --jobs: ${opts.jobs}`
+          : ` detected from CPU count: ${rawConcurrency}`
+      }. Please specify a positive integer.`
+    );
+    process.exit(1);
+  }
 
-  const engine = opts.engine as EngineType | undefined;
-  const format = (opts.to as MarkdownFormat | undefined) ?? 'gfm';
-  const mediaDir = opts.mediaDir ? path.resolve(opts.mediaDir) : undefined;
-  const trackChanges = opts.trackChanges as TrackChangesPolicy | undefined;
-  const timeout = opts.timeout ? parseInt(opts.timeout, 10) : undefined;
+  const options: ConversionOptions = {
+    engine: opts.engine as EngineType | undefined,
+    format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
+    mediaDir: opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined,
+    trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
+    timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
+  };
 
   const docxFiles = findDocxFiles(resolvedInput);
 
@@ -43,6 +57,9 @@ export async function batchCommand(
   }
 
   console.error(`Found ${docxFiles.length} DOCX file(s), converting with ${concurrency} worker(s)...`);
+
+  const engine = await resolveEngine(options.engine);
+  console.error(`Using engine: ${engine.name}`);
 
   let succeeded = 0;
   let failed = 0;
@@ -59,16 +76,7 @@ export async function batchCommand(
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
     try {
-      const result = await convertDocx({
-        inputPath: file,
-        outputPath: outPath,
-        engine,
-        format,
-        mediaDir,
-        trackChanges,
-        timeout,
-      });
-      console.error(`[${rel}] Using engine: ${result.engineName}`);
+      const result = await engine.convert(file, outPath, options);
       for (const w of result.warnings) {
         console.error(`[${rel}] Warning: ${w}`);
       }
@@ -99,6 +107,15 @@ export async function batchCommand(
   console.error(`\nBatch complete: ${succeeded} succeeded, ${failed} failed`);
 
   if (failed > 0) process.exit(1);
+}
+
+function resolveOutputPath(value: string): string {
+  if (path.isAbsolute(value)) {
+    // Keep absolute paths rooted as provided (avoid injecting cwd drive letters on Windows),
+    // but normalize separators so downstream path operations stay consistent.
+    return path.normalize(value);
+  }
+  return path.resolve(value);
 }
 
 function findDocxFiles(dir: string): string[] {

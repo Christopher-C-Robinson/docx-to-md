@@ -17,9 +17,10 @@ export function getEngine(name: EngineType): EngineAdapter {
 }
 
 export async function resolveEngine(preferred?: EngineType): Promise<EngineAdapter> {
+  const fallback: EngineType[] = ['pandoc', 'mammoth', 'libreoffice'];
   const order: EngineType[] = preferred
-    ? [preferred, 'pandoc', 'mammoth', 'libreoffice']
-    : ['pandoc', 'mammoth', 'libreoffice'];
+    ? [preferred, ...fallback.filter(e => e !== preferred)]
+    : fallback;
 
   for (const name of order) {
     const adapter = adapters.get(name);

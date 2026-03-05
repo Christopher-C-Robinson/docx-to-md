@@ -1,4 +1,11 @@
-import { ConversionOptions, ConversionResult, EngineType, MarkdownFormat, TrackChangesPolicy } from './types';
+import {
+  ConversionOptions,
+  ConversionResult,
+  EngineType,
+  MarkdownFormat,
+  StyleMapping,
+  TrackChangesPolicy,
+} from './types';
 import { resolveEngine } from './engines/registry';
 
 export interface ConvertDocxOptions {
@@ -10,6 +17,7 @@ export interface ConvertDocxOptions {
   trackChanges?: TrackChangesPolicy;
   luaFilters?: string[];
   timeout?: number;
+  styleMap?: StyleMapping[];
 }
 
 export interface ConvertDocxResult extends ConversionResult {
@@ -24,9 +32,11 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
     trackChanges: opts.trackChanges,
     luaFilters: opts.luaFilters,
     timeout: opts.timeout,
+    styleMap: opts.styleMap,
   };
 
   const engine = await resolveEngine(options.engine);
+  options.engine = engine.name;
   const result = await engine.convert(opts.inputPath, opts.outputPath, options);
   return { ...result, engineName: engine.name };
 }

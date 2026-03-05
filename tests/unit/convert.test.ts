@@ -47,6 +47,7 @@ describe('convertDocx', () => {
       mediaDir: '/media',
       trackChanges: 'accept',
       timeout: 5000,
+      styleMap: [{ docxStyle: 'Heading 1', markdownOutput: '# {text}' }],
     };
 
     await convertDocx(opts);
@@ -55,11 +56,31 @@ describe('convertDocx', () => {
       '/input/file.docx',
       '/output/file.md',
       expect.objectContaining({
+        engine: 'mammoth',
         format: 'gfm',
         mediaDir: '/media',
         trackChanges: 'accept',
         timeout: 5000,
+        styleMap: [{ docxStyle: 'Heading 1', markdownOutput: '# {text}' }],
       })
+    );
+  });
+
+  test('passes resolved engine name into conversion options when fallback occurs', async () => {
+    (resolveEngine as jest.Mock).mockResolvedValueOnce(mockEngine);
+
+    const opts: ConvertDocxOptions = {
+      inputPath: '/input/file.docx',
+      outputPath: '/output/file.md',
+      engine: 'pandoc',
+    };
+
+    await convertDocx(opts);
+
+    expect(mockEngine.convert).toHaveBeenCalledWith(
+      '/input/file.docx',
+      '/output/file.md',
+      expect.objectContaining({ engine: 'mammoth' })
     );
   });
 
