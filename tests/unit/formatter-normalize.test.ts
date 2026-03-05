@@ -1,6 +1,6 @@
 import { MarkdownFormatter } from '../../src/core/markdown/formatter';
 import {
-  RootNode, HeadingNode, ParagraphNode, TextNode,
+  RootNode, HeadingNode, ParagraphNode, TextNode, HtmlNode,
   TableNode, TableRowNode, TableCellNode,
 } from '../../src/core/ast/types';
 
@@ -18,6 +18,11 @@ function heading(depth: 1 | 2 | 3 | 4 | 5 | 6, content: string): HeadingNode {
   return { type: 'heading', depth, children: [text(content)] };
 }
 
+
+function html(value: string): HtmlNode {
+  return { type: 'html', value };
+}
+
 function makeRoot(...children: RootNode['children']): RootNode {
   return { type: 'root', children };
 }
@@ -31,16 +36,18 @@ describe('Formatter – normalize()', () => {
   });
 
   test('multiple consecutive blank lines are collapsed to one', () => {
-    // Build a root with two headings; the raw serialisation would emit \n\n
-    // after each. normalize() must ensure no run of 3+ newlines survives.
-    const root = makeRoot(heading(1, 'First'), heading(2, 'Second'));
+    // Inject text that already contains 3+ consecutive newlines so that
+    // normalize() must collapse them down to at most two.
+    const root = makeRoot(paragraph('First\n\n\nSecond'));
     const md = formatter.serialize(root);
+    expect(md).toContain('First\n\nSecond');
     expect(md).not.toMatch(/\n{3,}/);
   });
 
   test('trailing whitespace is stripped from every line', () => {
-    const root = makeRoot(paragraph('Line with content'));
+    const root = makeRoot(html('Line with spaces   \nLine with tab\t'));
     const md = formatter.serialize(root);
+    expect(md).toContain('Line with spaces\nLine with tab\n');
     // No line should end with a space or tab
     for (const line of md.split('\n')) {
       expect(line).not.toMatch(/[^\S\n]+$/);

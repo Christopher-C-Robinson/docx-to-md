@@ -33,6 +33,16 @@ describe('Table Fallback Policy', () => {
     expect(md).toContain('| Bob   | 25  |');
   });
 
+
+  test('rows with extra cells are safely truncated to header width', () => {
+    const root = makeTable([['Header'], ['Cell A', 'Cell B']]);
+    expect(() => formatter.serialize(root)).not.toThrow();
+    const md = formatter.serialize(root);
+    expect(md).toContain('| Header |');
+    expect(md).toContain('| Cell A |');
+    expect(md).not.toContain('Cell B');
+  });
+
   test('table with merged cells falls back to HTML', () => {
     const root = makeTable([['Header'], ['Cell A', 'Cell B']], true);
     const md = formatter.serialize(root);

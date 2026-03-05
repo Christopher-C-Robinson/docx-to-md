@@ -100,7 +100,7 @@ export class MarkdownFormatter {
     const colCount = rawRows[0].length;
 
     // Compute per-column widths in a single pass over all rows.
-    // Centre-aligned separators need at least 4 chars (':' + 2 dashes + ':').
+    // Center-aligned separators need at least 4 chars (':' + 2 dashes + ':').
     const colWidths: number[] = Array.from({ length: colCount }, (_, i) => {
       const align = node.align?.[i];
       return align === 'center' ? 4 : 3;
@@ -114,8 +114,10 @@ export class MarkdownFormatter {
 
     const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - s.length));
 
-    const formatRow = (cells: string[]) =>
-      '| ' + cells.map((c, i) => pad(c, colWidths[i])).join(' | ') + ' |';
+    const formatRow = (cells: string[]) => {
+      const limitedCells = cells.slice(0, colCount);
+      return '| ' + limitedCells.map((c, i) => pad(c, colWidths[i])).join(' | ') + ' |';
+    };
 
     const headerSep = '| ' + colWidths.map((w, i) => {
       const align = node.align?.[i];
