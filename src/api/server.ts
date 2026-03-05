@@ -6,14 +6,38 @@ import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import archiver from 'archiver';
 import rateLimit from 'express-rate-limit';
+import { resolveEngine } from '../core/engines/registry';
+import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
+/** Maximum number of conversion requests per IP within the rate-limit window. */
+export const RATE_LIMIT_MAX = 20;
+/** Rate-limit window in milliseconds (15 minutes). */
+export const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+const APP_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+const APP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const APP_CONVERT_RATE_LIMIT_MAX = 30;
+const APP_DOWNLOAD_RATE_LIMIT_MAX = 120;
 const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/octet-stream',
 ]);
+
+export interface AssetEntry {
+  filename: string;
+  contentBase64: string;
+  contentType: string;
+}
+
+export interface ConvertResponse {
+  markdown: string;
+  assets: AssetEntry[];
+  warnings: string[];
+}
 
 export interface SessionData {
   tempRootDir: string;
@@ -21,6 +45,8 @@ export interface SessionData {
   mediaDir: string;
   createdAt: number;
 }
+
+class RequestValidationError extends Error {}
 
 const sessions = new Map<string, SessionData>();
 
@@ -58,7 +84,7 @@ function resolveSessionPath(sessionDir: string, filename: string): string {
   return resolved;
 }
 
-const storage = multer.diskStorage({
+const appStorage = multer.diskStorage({
   destination(_req, _file, cb) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-upload-'));
     cb(null, tmpDir);
@@ -69,52 +95,209 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+const appUpload = multer({
+  storage: appStorage,
+  limits: { fileSize: APP_MAX_FILE_SIZE_BYTES },
   fileFilter(_req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ext !== '.docx') {
-      cb(new Error('Only .docx files are supported'));
+      cb(new RequestValidationError('Only .docx files are supported'));
       return;
     }
     if (file.mimetype && !ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error('Invalid MIME type'));
+      cb(new RequestValidationError('Invalid MIME type'));
       return;
     }
     cb(null, true);
   },
 });
 
+/**
+ * Backward-compatible API used by existing unit tests.
+ * POST /convert with direct markdown + base64 assets in one response.
+ */
+export function createServer(options?: {
+  maxFileSizeBytes?: number;
+  timeoutMs?: number;
+  rateLimitMax?: number;
+  rateLimitWindowMs?: number;
+}): express.Application {
+  const maxFileSizeBytes = options?.maxFileSizeBytes ?? MAX_FILE_SIZE_BYTES;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const rateLimitMaxReqs = options?.rateLimitMax ?? RATE_LIMIT_MAX;
+  const rateLimitWindow = options?.rateLimitWindowMs ?? RATE_LIMIT_WINDOW_MS;
+
+  const convertLimiter = rateLimit({
+    windowMs: rateLimitWindow,
+    max: rateLimitMaxReqs,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+  });
+
+  const upload = multer({
+    dest: os.tmpdir(),
+    limits: { fileSize: maxFileSizeBytes },
+    fileFilter(_req, file, cb) {
+      const isDocx =
+        file.mimetype ===
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.originalname.toLowerCase().endsWith('.docx');
+      if (isDocx) {
+        cb(null, true);
+      } else {
+        cb(new RequestValidationError('Only .docx files are supported'));
+      }
+    },
+  });
+
+  const app = express();
+
+  app.post(
+    '/convert',
+    convertLimiter,
+    upload.single('file'),
+    async (req: Request, res: Response, next: NextFunction) => {
+      if (!req.file) {
+        res.status(400).json({
+          error: 'No file uploaded. Send a .docx file as the "file" field.',
+        });
+        return;
+      }
+
+      const uploadedPath = req.file.path;
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-to-md-'));
+
+      let cleaned = false;
+      const cleanup = (): void => {
+        if (cleaned) return;
+        cleaned = true;
+        try {
+          fs.rmSync(uploadedPath, { force: true });
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      };
+
+      const outputPath = path.join(tmpDir, 'output.md');
+      const mediaDir = path.join(tmpDir, 'media');
+
+      const conversionOptions: ConversionOptions = {
+        format: 'gfm',
+        mediaDir,
+        timeout: timeoutMs,
+      };
+
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        cleanup();
+        if (!res.headersSent) {
+          res.status(504).json({ error: 'Conversion timed out' });
+        }
+      }, timeoutMs);
+
+      try {
+        const engine = await resolveEngine();
+        const result = await engine.convert(uploadedPath, outputPath, conversionOptions);
+
+        clearTimeout(timer);
+        if (timedOut) return;
+
+        const assetEntries = await Promise.all(
+          result.assets.map(async (assetPath) => {
+            try {
+              const content = await fs.promises.readFile(assetPath);
+              const ext = path.extname(assetPath).slice(1).toLowerCase();
+              return {
+                filename: path.basename(assetPath),
+                contentBase64: content.toString('base64'),
+                contentType: mimeForExt(ext),
+              } as AssetEntry;
+            } catch {
+              // skip unreadable assets
+              return null;
+            }
+          })
+        );
+
+        const assets: AssetEntry[] = assetEntries.filter(
+          (entry): entry is AssetEntry => entry !== null
+        );
+
+        const body: ConvertResponse = {
+          markdown: result.markdown,
+          assets,
+          warnings: result.warnings,
+        };
+        res.json(body);
+      } catch (err) {
+        clearTimeout(timer);
+        if (!timedOut) {
+          next(err);
+        }
+      } finally {
+        cleanup();
+      }
+    }
+  );
+
+  // Error handler – multer errors and general errors
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? `File too large. Maximum size is ${maxFileSizeBytes / (1024 * 1024)} MB.`
+          : err.message;
+      res.status(status).json({ error: message });
+      return;
+    }
+    if (err instanceof Error) {
+      if (err instanceof RequestValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Internal server error' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  });
+
+  return app;
+}
+
+/**
+ * Current web/API server from main branch.
+ * POST /api/convert creates a session and exposes image/download endpoints.
+ */
 export function createApp(): express.Application {
   const app = express();
 
-  // Rate limiters
   const convertLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 30,
+    windowMs: APP_RATE_LIMIT_WINDOW_MS,
+    max: APP_CONVERT_RATE_LIMIT_MAX,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
   });
 
   const downloadLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 120,
+    windowMs: APP_RATE_LIMIT_WINDOW_MS,
+    max: APP_DOWNLOAD_RATE_LIMIT_MAX,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
   });
 
-  // Serve web UI
   const webDir = path.resolve(__dirname, '../../web');
   app.use(express.static(webDir));
 
-  // POST /api/convert – upload a .docx and return markdown + image list
   app.post(
     '/api/convert',
     convertLimiter,
-    upload.single('file'),
+    appUpload.single('file'),
     async (req: Request, res: Response): Promise<void> => {
       cleanupSessions();
 
@@ -138,7 +321,7 @@ export function createApp(): express.Application {
         });
 
         const imageFiles = fs.existsSync(mediaDir)
-          ? fs.readdirSync(mediaDir).filter((f) => /\.(png|jpe?g|gif|webp|svg|bmp|tiff?)$/i.test(f))
+          ? fs.readdirSync(mediaDir).filter((f) => /(\.png|jpe?g|gif|webp|svg|bmp|tiff?)$/i.test(f))
           : [];
 
         sessions.set(sessionId, {
@@ -176,7 +359,6 @@ export function createApp(): express.Application {
     }
   );
 
-  // GET /api/images/:sessionId/:filename – serve an extracted image
   app.get('/api/images/:sessionId/:filename', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const filename = String(req.params['filename']);
@@ -199,7 +381,6 @@ export function createApp(): express.Application {
     res.sendFile(filePath);
   });
 
-  // GET /api/download/markdown/:sessionId – download the markdown file
   app.get('/api/download/markdown/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const session = sessions.get(sessionId);
@@ -214,7 +395,6 @@ export function createApp(): express.Application {
     res.download(session.markdownPath, 'converted.md');
   });
 
-  // GET /api/download/images/:sessionId – download all images as a zip
   app.get('/api/download/images/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
     const sessionId = String(req.params['sessionId']);
     const session = sessions.get(sessionId);
@@ -245,21 +425,47 @@ export function createApp(): express.Application {
     });
   });
 
-  // GET /api/health
   app.get('/api/health', (_req: Request, res: Response): void => {
     res.json({ status: 'ok' });
   });
 
-  // Error handler for multer and other middleware errors
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction): void => {
-    // Only surface known safe messages (multer file filter errors); hide internals
-    const SAFE_PREFIXES = ['Only .docx files are supported', 'Invalid MIME type', 'File too large'];
-    const message = SAFE_PREFIXES.some((p) => err.message.startsWith(p))
-      ? err.message
-      : 'Invalid request';
-    res.status(400).json({ error: message });
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : err.message;
+      res.status(status).json({ error: message });
+      return;
+    }
+    if (err instanceof RequestValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof Error) {
+      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large'];
+      const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
+      res.status(400).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
   });
 
   return app;
+}
+
+export function mimeForExt(ext: string): string {
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'webp':
+      return 'image/webp';
+    default:
+      return 'application/octet-stream';
+  }
 }
