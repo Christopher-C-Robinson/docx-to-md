@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
-import { resolveEngine } from '../../core/engines/registry';
+import { EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
+import { convertDocx } from '../../core/convert';
 
 interface BatchCommandOptions {
   out?: string;
@@ -29,13 +29,11 @@ export async function batchCommand(
 
   const concurrency = parseInt(opts.jobs ?? '4', 10);
 
-  const options: ConversionOptions = {
-    engine: opts.engine as EngineType | undefined,
-    format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-    mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
-    trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
-    timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
-  };
+  const engine = opts.engine as EngineType | undefined;
+  const format = (opts.to as MarkdownFormat | undefined) ?? 'gfm';
+  const mediaDir = opts.mediaDir ? path.resolve(opts.mediaDir) : undefined;
+  const trackChanges = opts.trackChanges as TrackChangesPolicy | undefined;
+  const timeout = opts.timeout ? parseInt(opts.timeout, 10) : undefined;
 
   const docxFiles = findDocxFiles(resolvedInput);
 
@@ -45,9 +43,6 @@ export async function batchCommand(
   }
 
   console.error(`Found ${docxFiles.length} DOCX file(s), converting with ${concurrency} worker(s)...`);
-
-  const engine = await resolveEngine(options.engine);
-  console.error(`Using engine: ${engine.name}`);
 
   let succeeded = 0;
   let failed = 0;
@@ -64,7 +59,16 @@ export async function batchCommand(
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
     try {
-      const result = await engine.convert(file, outPath, options);
+      const result = await convertDocx({
+        inputPath: file,
+        outputPath: outPath,
+        engine,
+        format,
+        mediaDir,
+        trackChanges,
+        timeout,
+      });
+      console.error(`[${rel}] Using engine: ${result.engineName}`);
       for (const w of result.warnings) {
         console.error(`[${rel}] Warning: ${w}`);
       }
