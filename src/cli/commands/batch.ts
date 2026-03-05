@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
@@ -27,7 +28,7 @@ export async function batchCommand(
   const outDir = opts.out ? path.resolve(opts.out) : resolvedInput;
   fs.mkdirSync(outDir, { recursive: true });
 
-  const concurrency = parseInt(opts.jobs ?? '4', 10);
+  const concurrency = opts.jobs ? parseInt(opts.jobs, 10) : os.cpus().length;
 
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,

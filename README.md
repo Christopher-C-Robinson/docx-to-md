@@ -56,7 +56,7 @@ docx2md batch ./docs/ --out ./markdown/ --jobs 8
 | `--track-changes` | `accept` \| `reject` \| `all` | — |
 | `--lua-filter` | Pandoc Lua filter path (repeatable) | — |
 | `--timeout` | Engine timeout in ms | 60000 |
-| `--jobs` | Parallel workers (batch) | 4 |
+| `--jobs` | Parallel workers (batch) | CPU core count |
 
 ## Programmatic API
 
