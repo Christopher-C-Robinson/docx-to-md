@@ -5,6 +5,7 @@ import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { EngineAdapter } from '../interface';
 import { ConversionOptions, ConversionResult, EngineType } from '../../types';
+import { extractMedia } from '../../assets/extractMedia';
 
 export class MammothAdapter implements EngineAdapter {
   readonly name: EngineType = 'mammoth';
@@ -43,9 +44,24 @@ export class MammothAdapter implements EngineAdapter {
 
     if (options.mediaDir) {
       const mediaDir = path.resolve(options.mediaDir);
-      fs.mkdirSync(mediaDir, { recursive: true });
+
+      // Extract all media from the DOCX archive up-front so that images get
+      // their original names (e.g. image1.png) with sanitized, safe paths.
+      // The returned `contentMap` is built during extraction so no extra
+      // disk reads are needed to match images in the mammoth callback.
+      const { assets: extracted, warnings: extractWarnings, contentMap } = extractMedia(inputPath, mediaDir);
+      assets.push(...extracted);
+      warnings.push(...extractWarnings);
+
       const imageHandler = mammoth.images.imgElement((image) => {
         return image.read('base64').then((imageBuffer) => {
+          const existing = contentMap.get(imageBuffer);
+          if (existing) {
+            return { src: path.relative(path.dirname(outputPath), existing) };
+          }
+
+          // Fallback: image not found in the DOCX media directory (e.g. an
+          // embedded OLE object).  Write it with a safe generated name.
           const ext = image.contentType.split('/')[1] ?? 'png';
           const filename = `image-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
           const filepath = path.join(mediaDir, filename);

@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EngineAdapter } from '../interface';
 import { ConversionOptions, ConversionResult, EngineType } from '../../types';
+import { extractMedia } from '../../assets/extractMedia';
 
 const LO_TIMEOUT_MS = 120_000;
 
@@ -57,6 +58,17 @@ export class LibreOfficeAdapter implements EngineAdapter {
       }
 
       const markdown = fs.readFileSync(outputPath, 'utf8');
+
+      if (options.mediaDir) {
+        try {
+          const { assets: extracted, warnings: extractWarnings } = extractMedia(inputPath, options.mediaDir);
+          assets.push(...extracted);
+          warnings.push(...extractWarnings);
+        } catch (err) {
+          warnings.push(`Media extraction failed: ${(err as Error).message}`);
+        }
+      }
+
       return { markdown, assets, warnings, metadata };
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
