@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Run unit tests
-        run: npx jest --testPathPattern=unit --coverage
+        run: npx jest --testPathPatterns=unit --coverage
 
       - name: Install Pandoc (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -50,4 +50,4 @@ jobs:
         run: brew install pandoc
 
       - name: Run integration tests
-        run: npx jest --testPathPattern=integration
+        run: npx jest --testPathPatterns=integration
