@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>docx → Markdown Converter</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" integrity="sha384-8hAfZQ5Oqos5HLTHfR0sLvvwpcVI4fGhV+0Dj/HCcpkKaacivQs82XHmvLOnAhXn" crossorigin="anonymous"></script>
+  <title>docx → md Converter</title>
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -351,6 +351,70 @@
     /* ── Reset button ──────────────────────────── */
     #reset-btn { align-self: flex-start; }
 
+    /* ── Batch queue ───────────────────────────── */
+    #batch-section { display: none; flex-direction: column; gap: 14px; }
+    #batch-section.visible { display: flex; }
+
+    .batch-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .batch-header h3 {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .batch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .batch-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .batch-item .batch-name {
+      flex: 1;
+      min-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .batch-item .batch-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .batch-item .batch-status.pending  { background: var(--surface2); color: var(--text-muted); }
+    .batch-item .batch-status.running  { background: rgba(108,125,232,0.15); color: var(--accent); }
+    .batch-item .batch-status.done     { background: rgba(108,232,168,0.12); color: var(--success); }
+    .batch-item .batch-status.error    { background: rgba(232,108,108,0.12); color: var(--danger); }
+
+    .batch-item .batch-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .batch-item .batch-actions button { padding: 5px 11px; font-size: 12px; }
+
     footer {
       text-align: center;
       padding: 20px;
@@ -370,9 +434,9 @@
     <!-- Drop zone -->
     <div id="drop-zone" role="button" tabindex="0" aria-label="Drop a .docx file here or click to browse">
       <span class="icon">📄</span>
-      <h2>Drop your Word document here</h2>
-      <p>or <span class="browse" id="browse-link">click to browse</span> · .docx files only · max 50 MB</p>
-      <input type="file" id="file-input" accept=".docx" aria-hidden="true" />
+      <h2>Drop your Word document(s) here</h2>
+      <p>or <span class="browse" id="browse-link">click to browse</span> · .docx files only · max 50 MB · multiple files supported</p>
+      <input type="file" id="file-input" accept=".docx" multiple aria-hidden="true" />
     </div>
 
     <!-- Status bar -->
@@ -414,6 +478,16 @@
     </section>
 
     <button class="btn-secondary" id="reset-btn" style="display:none">↺ Convert another file</button>
+
+    <!-- Batch queue (shown when multiple files are selected) -->
+    <section id="batch-section" aria-label="Batch conversion queue">
+      <div class="batch-header">
+        <h3 id="batch-title">Batch Conversion</h3>
+        <button class="btn-primary" id="batch-convert-btn">▶ Convert All</button>
+        <button class="btn-secondary" id="batch-reset-btn">✕ Clear</button>
+      </div>
+      <div class="batch-list" id="batch-list"></div>
+    </section>
   </main>
 
   <footer>docx-to-md · open source document converter</footer>
@@ -422,29 +496,32 @@
     // Prevent XSS: all user-supplied content goes through these helpers
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
-    // Marked is loaded from CDN (global `marked`)
-    // Configure to sanitize rendered HTML (use DOMPurify-style via option)
     let markdownRaw = '';
     let sessionId = '';
 
-    const dropZone   = document.getElementById('drop-zone');
-    const fileInput  = document.getElementById('file-input');
-    const statusBar  = document.getElementById('status-bar');
-    const statusText = document.getElementById('status-text');
-    const spinner    = document.getElementById('spinner');
-    const warningsBox  = document.getElementById('warnings-box');
-    const warningsList = document.getElementById('warnings-list');
-    const resultSection  = document.getElementById('result-section');
-    const imagesSection  = document.getElementById('images-section');
-    const mdPreview = document.getElementById('md-preview');
-    const mdRaw     = document.getElementById('md-raw');
-    const imgGrid   = document.getElementById('img-grid');
-    const resetBtn  = document.getElementById('reset-btn');
-    const dlMdBtn   = document.getElementById('dl-md-btn');
-    const dlImgsBtn = document.getElementById('dl-imgs-btn');
-    const copyMdBtn = document.getElementById('copy-md-btn');
-    const tabPreview = document.getElementById('tab-preview');
-    const tabRaw    = document.getElementById('tab-raw');
+    const dropZone      = document.getElementById('drop-zone');
+    const fileInput     = document.getElementById('file-input');
+    const statusBar     = document.getElementById('status-bar');
+    const statusText    = document.getElementById('status-text');
+    const spinner       = document.getElementById('spinner');
+    const warningsBox   = document.getElementById('warnings-box');
+    const warningsList  = document.getElementById('warnings-list');
+    const resultSection = document.getElementById('result-section');
+    const imagesSection = document.getElementById('images-section');
+    const mdPreview     = document.getElementById('md-preview');
+    const mdRaw         = document.getElementById('md-raw');
+    const imgGrid       = document.getElementById('img-grid');
+    const resetBtn      = document.getElementById('reset-btn');
+    const dlMdBtn       = document.getElementById('dl-md-btn');
+    const dlImgsBtn     = document.getElementById('dl-imgs-btn');
+    const copyMdBtn     = document.getElementById('copy-md-btn');
+    const tabPreview    = document.getElementById('tab-preview');
+    const tabRaw        = document.getElementById('tab-raw');
+    const batchSection  = document.getElementById('batch-section');
+    const batchList     = document.getElementById('batch-list');
+    const batchTitle    = document.getElementById('batch-title');
+    const batchConvertBtn = document.getElementById('batch-convert-btn');
+    const batchResetBtn   = document.getElementById('batch-reset-btn');
 
     // ── Tab switching ──────────────────────────────────────────────────────
     tabPreview.addEventListener('click', () => {
@@ -464,16 +541,39 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      const file = e.dataTransfer?.files?.[0];
-      if (file) handleFile(file);
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(f => f.name.toLowerCase().endsWith('.docx'));
+      if (files.length === 1) {
+        handleFile(files[0]);
+      } else if (files.length > 1) {
+        startBatch(files);
+      } else if (e.dataTransfer?.files?.length > 0) {
+        showError('Only .docx files are supported.');
+      }
     });
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
     document.getElementById('browse-link').addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
-    fileInput.addEventListener('change', () => { if (fileInput.files?.[0]) handleFile(fileInput.files[0]); });
+    fileInput.addEventListener('change', () => {
+      const allFiles = Array.from(fileInput.files ?? []);
+      const docxFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.docx'));
+      if (allFiles.length > 0 && docxFiles.length === 0) {
+        showError('Only .docx files are supported.');
+        return;
+      }
+      if (docxFiles.length > 0 && docxFiles.length < allFiles.length) {
+        showError('Some selected files were ignored because they are not .docx.');
+      }
+      if (docxFiles.length === 1) {
+        handleFile(docxFiles[0]);
+      } else if (docxFiles.length > 1) {
+        startBatch(docxFiles);
+      }
+    });
 
-    // ── Reset ──────────────────────────────────────────────────────────────
-    resetBtn.addEventListener('click', () => {
+    // ── Reset (single-file mode) ───────────────────────────────────────────
+    resetBtn.addEventListener('click', resetAll);
+
+    function resetAll() {
       markdownRaw = ''; sessionId = '';
       resultSection.classList.remove('visible');
       imagesSection.classList.remove('visible');
@@ -485,7 +585,7 @@
       resetBtn.style.display = 'none';
       dropZone.style.display = '';
       fileInput.value = '';
-    });
+    }
 
     // ── Copy to clipboard ──────────────────────────────────────────────────
     copyMdBtn.addEventListener('click', async () => {
@@ -510,7 +610,7 @@
       window.location.href = `/api/download/images/${encodeURIComponent(sessionId)}`;
     });
 
-    // ── Convert ────────────────────────────────────────────────────────────
+    // ── Single-file convert ────────────────────────────────────────────────
     async function handleFile(file) {
       if (!file.name.toLowerCase().endsWith('.docx')) {
         showError('Only .docx files are supported.');
@@ -545,7 +645,7 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (sanitised via marked options)
+        // Markdown preview (sanitised via DOMPurify + marked)
         mdRaw.value = markdownRaw;
         mdPreview.innerHTML = DOMPurify.sanitize(marked.parse(markdownRaw, { breaks: false, gfm: true }));
         resultSection.classList.add('visible');
@@ -563,11 +663,119 @@
 
         statusBar.classList.remove('visible');
         resetBtn.style.display = '';
-      } catch (err) {
+      } catch {
         showError('Network error. Is the server running?');
       }
     }
 
+    // ── Batch conversion ───────────────────────────────────────────────────
+
+    /** @type {{ file: File, sessionId: string|null, status: 'pending'|'running'|'done'|'error', error: string|null, hasImages: boolean }[]} */
+    let batchQueue = [];
+
+    function startBatch(files) {
+      batchQueue = files.map(f => ({ file: f, sessionId: null, status: 'pending', error: null, hasImages: false }));
+      renderBatchList();
+      dropZone.style.display = 'none';
+      resultSection.classList.remove('visible');
+      imagesSection.classList.remove('visible');
+      statusBar.classList.remove('visible', 'error');
+      warningsBox.classList.remove('visible');
+      resetBtn.style.display = 'none';
+      batchSection.classList.add('visible');
+      batchTitle.textContent = `Batch Conversion — ${files.length} file${files.length !== 1 ? 's' : ''}`;
+      batchConvertBtn.disabled = false;
+    }
+
+    function renderBatchList() {
+      batchList.innerHTML = batchQueue.map((item, i) => buildBatchItemHTML(item, i)).join('');
+    }
+
+    function buildBatchItemHTML(item, i) {
+      const statusLabel = { pending: 'Pending', running: 'Converting…', done: 'Done', error: 'Error' }[item.status];
+      const actions = item.status === 'done'
+        ? `<div class="batch-actions">
+             <button class="btn-primary" data-batch-action="md" data-batch-index="${i}">⬇ .md</button>
+             ${item.hasImages ? `<button class="btn-secondary" data-batch-action="imgs" data-batch-index="${i}">⬇ images</button>` : ''}
+           </div>`
+        : (item.status === 'error'
+            ? `<span style="color:var(--danger);font-size:12px">${esc(item.error || 'Failed')}</span>`
+            : '');
+      return `<div class="batch-item" id="batch-item-${i}">
+        <span class="batch-name" title="${esc(item.file.name)}">${esc(item.file.name)}</span>
+        <span class="batch-status ${item.status}">${esc(statusLabel)}</span>
+        ${actions}
+      </div>`;
+    }
+
+    function updateBatchItem(i) {
+      const el = document.getElementById(`batch-item-${i}`);
+      if (!el) return;
+      const item = batchQueue[i];
+      const tmp = document.createElement('div');
+      tmp.innerHTML = buildBatchItemHTML(item, i);
+      const newItem = tmp.firstElementChild;
+      if (newItem) el.replaceWith(newItem);
+    }
+
+    // ── Batch event delegation ─────────────────────────────────────────────
+    batchList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-batch-action]');
+      if (!btn) return;
+      const idx = parseInt(btn.getAttribute('data-batch-index'), 10);
+      const action = btn.getAttribute('data-batch-action');
+      if (!Number.isFinite(idx)) return;
+      const item = batchQueue[idx];
+      if (!item?.sessionId) return;
+      if (action === 'md') {
+        window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
+      } else if (action === 'imgs') {
+        window.location.href = `/api/download/images/${encodeURIComponent(item.sessionId)}`;
+      }
+    });
+
+    batchConvertBtn.addEventListener('click', runBatch);
+
+    async function runBatch() {
+      batchConvertBtn.disabled = true;
+      for (let i = 0; i < batchQueue.length; i++) {
+        const item = batchQueue[i];
+        if (item.status === 'done') continue;
+        item.status = 'running';
+        updateBatchItem(i);
+
+        try {
+          const formData = new FormData();
+          formData.append('file', item.file);
+          const res = await fetch('/api/convert', { method: 'POST', body: formData });
+          const data = await res.json();
+
+          if (!res.ok) {
+            item.status = 'error';
+            item.error = data.error || `Server error ${res.status}`;
+          } else {
+            item.sessionId = data.sessionId;
+            item.hasImages = Array.isArray(data.images) && data.images.length > 0;
+            item.status = 'done';
+          }
+        } catch {
+          item.status = 'error';
+          item.error = 'Network error. Is the server running?';
+        }
+        updateBatchItem(i);
+      }
+      batchConvertBtn.disabled = false;
+    }
+
+    batchResetBtn.addEventListener('click', () => {
+      batchQueue = [];
+      batchList.innerHTML = '';
+      batchSection.classList.remove('visible');
+      dropZone.style.display = '';
+      fileInput.value = '';
+    });
+
+    // ── Helpers ────────────────────────────────────────────────────────────
     function showStatus(msg) {
       statusText.textContent = msg;
       statusBar.classList.remove('error');
