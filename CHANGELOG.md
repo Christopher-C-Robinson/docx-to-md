@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] – 2026-03-06
+
+### Fixed
+- correct mammoth style map syntax and add missing default style mappings
+
+### Changed
+- Merge pull request #44 from Christopher-C-Robinson/copilot/fix-mammoth-style-warnings
+- Initial plan
+
 ## [0.1.6] – 2026-03-06
 
 ### Added
