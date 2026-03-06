@@ -196,7 +196,7 @@ describe('batch command', () => {
     expect(mockConvert).toHaveBeenCalledWith(
       path.join(path.resolve(inputDir), 'doc1.docx'),
       path.join(path.resolve(inputDir), 'doc1.md'),
-      expect.objectContaining({ mediaDir: '/custom/media' })
+      expect.objectContaining({ mediaDir: path.normalize('/custom/media') })
     );
   });
 

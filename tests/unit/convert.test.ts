@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { convertDocx, ConvertDocxOptions } from '../../src/core/convert';
 import { resolveEngine } from '../../src/core/engines/registry';
 import { ConversionResult } from '../../src/core/types';
@@ -114,7 +115,9 @@ describe('convertDocx', () => {
     expect(mockEngine.convert).toHaveBeenCalledWith(
       '/input/file.docx',
       '/tmp/convert-inline-default/file.md',
-      expect.objectContaining({ mediaDir: '/tmp/convert-inline-default/media' })
+      expect.objectContaining({
+        mediaDir: path.join(path.dirname('/tmp/convert-inline-default/file.md'), 'media'),
+      })
     );
   });
 
