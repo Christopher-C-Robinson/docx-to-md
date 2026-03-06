@@ -5,6 +5,8 @@ export type EngineType = 'pandoc' | 'mammoth' | 'libreoffice';
 export interface StyleMapping {
   docxStyle: string;
   markdownOutput: string;
+  /** Whether this mapping targets a paragraph style ('paragraph') or a run/character style ('run'). Defaults to 'paragraph'. */
+  type?: 'paragraph' | 'run';
 }
 
 export interface ConversionOptions {
