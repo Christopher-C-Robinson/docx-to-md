@@ -162,6 +162,29 @@ describe('API server', () => {
     expect(res.headers['content-type']).toContain('application/zip');
   });
 
+  test('GET /api/download/zip/:sessionId returns a zip with markdown and media', async () => {
+    const convert = await postConvert(IMAGE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/download/zip/${sessionId}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    const disposition = res.headers['content-disposition'] as string;
+    expect(disposition).toContain('document.zip');
+  });
+
+  test('GET /api/download/zip/:sessionId also works for markdown-only documents', async () => {
+    const convert = await postConvert(SIMPLE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/download/zip/${sessionId}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+  });
+
+  test('GET /api/download/zip with unknown sessionId returns 404', async () => {
+    const res = await get('/api/download/zip/nonexistent-session-id');
+    expect(res.status).toBe(404);
+  });
+
   test('GET /api/download/markdown with unknown sessionId returns 404', async () => {
     const res = await get('/api/download/markdown/nonexistent-session-id');
     expect(res.status).toBe(404);

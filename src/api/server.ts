@@ -425,6 +425,39 @@ export function createApp(): express.Application {
     });
   });
 
+  app.get('/api/download/zip/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
+    const sessionId = String(req.params['sessionId']);
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+    if (!fs.existsSync(session.markdownPath)) {
+      res.status(404).json({ error: 'Conversion output not found' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="document.zip"');
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      if (res.headersSent || res.writableEnded) {
+        res.destroy(err);
+        return;
+      }
+      res.status(500).json({ error: 'Failed to create archive.' });
+    });
+    archive.pipe(res);
+    archive.file(session.markdownPath, { name: 'document.md' });
+    if (fs.existsSync(session.mediaDir)) {
+      archive.directory(session.mediaDir, 'media');
+    }
+    archive.finalize().catch(() => {
+      // best effort
+    });
+  });
+
   app.get('/api/health', (_req: Request, res: Response): void => {
     res.json({ status: 'ok' });
   });
