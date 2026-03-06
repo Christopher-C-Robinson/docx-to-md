@@ -2,13 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist-electron",
-    "rootDir": ".",
+    "rootDir": "electron",
     "module": "commonjs",
     "target": "ES2020",
     "sourceMap": true,
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["electron/**/*", "src/**/*"],
+  "include": ["electron/**/*"],
   "exclude": ["node_modules", "dist", "dist-electron", "tests"]
 }

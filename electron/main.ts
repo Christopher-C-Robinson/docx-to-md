@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import * as http from 'http';
-import { createApp } from '../src/api/server';
+import * as path from 'path';
+import type { Application } from 'express';
 
 let mainWindow: BrowserWindow | null = null;
 let httpServer: http.Server | null = null;
@@ -11,6 +12,7 @@ let serverPort = 0;
  */
 function startServer(): Promise<number> {
   return new Promise((resolve, reject) => {
+    const createApp = loadCreateApp();
     const expressApp = createApp();
     httpServer = expressApp.listen(0, '127.0.0.1', () => {
       const addr = httpServer!.address();
@@ -22,6 +24,21 @@ function startServer(): Promise<number> {
     });
     httpServer.on('error', reject);
   });
+}
+
+function loadCreateApp(): () => Application {
+  const appPath = app.getAppPath();
+  const serverModulePath = path.join(appPath, 'dist', 'api', 'server.js');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const loaded = require(serverModulePath) as { createApp?: () => Application };
+  if (!loaded.createApp) {
+    throw new Error(`Could not load createApp from ${serverModulePath}`);
+  }
+  return loaded.createApp;
+}
+
+function isLocalAppUrl(url: string, port: number): boolean {
+  return url.startsWith(`http://127.0.0.1:${port}`);
 }
 
 function createWindow(port: number): void {
@@ -42,11 +59,25 @@ function createWindow(port: number): void {
 
   // Open external links in the system browser rather than inside Electron.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(`http://127.0.0.1:${port}`)) {
+    if (!isLocalAppUrl(url, port)) {
       void shell.openExternal(url);
       return { action: 'deny' };
     }
     return { action: 'allow' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isLocalAppUrl(url, port)) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.on('did-redirect-navigation', (event, url, _isInPlace, isMainFrame) => {
+    if (isMainFrame && !isLocalAppUrl(url, port)) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
   });
 
   mainWindow.on('closed', () => {

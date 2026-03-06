@@ -3,21 +3,19 @@ productName: docx2md
 copyright: Copyright © 2024 docx-to-md contributors
 
 # Entry point: compiled Electron main process
-main: dist-electron/electron/main.js
+main: dist-electron/main.js
 
 directories:
   output: release
-  buildResources: build-resources
 
 # Files to bundle inside the app
 files:
   - dist-electron/**/*
   - dist/**/*
   - web/**/*
-  - node_modules/**/*
   - package.json
 
-# Do not include dev-only files
+# Rebuild production native dependencies when packaging
 npmRebuild: true
 
 mac:
@@ -31,7 +29,6 @@ mac:
       arch:
         - x64
         - arm64
-  icon: build-resources/icon.icns
 
 win:
   target:
@@ -41,7 +38,6 @@ win:
     - target: portable
       arch:
         - x64
-  icon: build-resources/icon.ico
 
 nsis:
   oneClick: false
@@ -56,5 +52,4 @@ linux:
     - target: AppImage
       arch:
         - x64
-  icon: build-resources/icon.png
   category: Office
