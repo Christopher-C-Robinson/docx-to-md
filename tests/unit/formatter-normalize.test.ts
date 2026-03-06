@@ -1,7 +1,7 @@
 import { MarkdownFormatter } from '../../src/core/markdown/formatter';
 import {
   RootNode, HeadingNode, ParagraphNode, TextNode, HtmlNode,
-  TableNode, TableRowNode, TableCellNode,
+  TableNode, TableRowNode, TableCellNode, ImageNode,
 } from '../../src/core/ast/types';
 
 const formatter = new MarkdownFormatter('gfm');
@@ -129,5 +129,73 @@ describe('Formatter – padded table columns', () => {
     for (const cell of cellSeps) {
       expect(cell.replace(/:/g, '')).toMatch(new RegExp(`^-{${MIN_SEPARATOR_DASHES},}$`));
     }
+  });
+});
+
+describe('Formatter – image placement', () => {
+  function image(url: string, alt = '', title?: string): ImageNode {
+    return { type: 'image', url, alt, ...(title ? { title } : {}) };
+  }
+
+  test('block-level image (direct root child) gets its own paragraph spacing', () => {
+    const root = makeRoot(
+      paragraph('Text before'),
+      image('img.png', 'alt'),
+      paragraph('Text after'),
+    );
+    const md = formatter.serialize(root);
+    // The image must appear between the two paragraphs, separated by blank lines
+    expect(md).toContain('Text before\n\n![alt](img.png)\n\nText after');
+  });
+
+  test('inline image inside a paragraph stays on the same line as surrounding text', () => {
+    const para: ParagraphNode = {
+      type: 'paragraph',
+      children: [
+        text('Before '),
+        image('img.png', 'alt'),
+        text(' after'),
+      ],
+    };
+    const root = makeRoot(para);
+    const md = formatter.serialize(root);
+    expect(md).toContain('Before ![alt](img.png) after');
+    // Inline image must not introduce a blank line inside the paragraph
+    expect(md).not.toMatch(/Before.*\n\n.*after/);
+  });
+
+  test('document ordering is preserved: paragraph → image → paragraph', () => {
+    const root = makeRoot(
+      paragraph('First'),
+      image('photo.jpg'),
+      paragraph('Last'),
+    );
+    const md = formatter.serialize(root);
+    const firstIdx = md.indexOf('First');
+    const imgIdx = md.indexOf('![](photo.jpg)');
+    const lastIdx = md.indexOf('Last');
+    expect(firstIdx).toBeLessThan(imgIdx);
+    expect(imgIdx).toBeLessThan(lastIdx);
+  });
+
+  test('multiple block-level images each get their own paragraph spacing', () => {
+    const root = makeRoot(
+      paragraph('Intro'),
+      image('img1.png', 'one'),
+      paragraph('Middle'),
+      image('img2.png', 'two'),
+      paragraph('End'),
+    );
+    const md = formatter.serialize(root);
+    expect(md).toContain('Intro\n\n![one](img1.png)\n\nMiddle\n\n![two](img2.png)\n\nEnd');
+  });
+
+  test('block-level image with title retains title attribute and spacing', () => {
+    const root = makeRoot(
+      paragraph('Caption:'),
+      image('fig.png', 'Figure', 'My Caption'),
+    );
+    const md = formatter.serialize(root);
+    expect(md).toContain('Caption:\n\n![Figure](fig.png "My Caption")\n');
   });
 });
