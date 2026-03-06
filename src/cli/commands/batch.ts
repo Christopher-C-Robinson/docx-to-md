@@ -43,10 +43,12 @@ export async function batchCommand(
     process.exit(1);
   }
 
+  const sharedMediaDir = opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined;
+
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,
     format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-    mediaDir: opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined,
+    mediaDir: sharedMediaDir,
     trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
     timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
   };
@@ -78,7 +80,12 @@ export async function batchCommand(
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
     try {
-      const result = await engine.convert(file, outPath, options);
+      const perFileMediaDir = sharedMediaDir ?? (opts.inlineImages ? path.join(path.dirname(outPath), 'media') : undefined);
+      const perFileOptions: ConversionOptions = {
+        ...options,
+        mediaDir: perFileMediaDir,
+      };
+      const result = await engine.convert(file, outPath, perFileOptions);
       for (const w of result.warnings) {
         console.error(`[${rel}] Warning: ${w}`);
       }

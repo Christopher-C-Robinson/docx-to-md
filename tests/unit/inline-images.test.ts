@@ -154,14 +154,29 @@ describe('inlineImages', () => {
     expect(result).toBe(`![img](data:image/png;base64,${imgData.toString('base64')})`);
   });
 
-  test('handles an absolute image path', () => {
+  test('leaves an absolute image path unchanged', () => {
     const imgData = Buffer.from('abs-img-data');
     const imgPath = writeTmpFile('abs.png', imgData);
 
     const markdown = `![abs](${imgPath})`;
     const result = inlineImages(markdown, tmpDir);
 
-    expect(result).toBe(`![abs](data:image/png;base64,${imgData.toString('base64')})`);
+    expect(result).toBe(markdown);
+  });
+
+  test('leaves path traversal references unchanged', () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inline-images-outside-'));
+    try {
+      const outsideImagePath = path.join(outsideDir, 'secret.png');
+      fs.writeFileSync(outsideImagePath, Buffer.from('outside'));
+
+      const markdown = '![secret](../secret.png)';
+      const result = inlineImages(markdown, tmpDir);
+
+      expect(result).toBe(markdown);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
   });
 
   test('returns markdown unchanged when there are no images', () => {

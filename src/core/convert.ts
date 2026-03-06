@@ -30,10 +30,13 @@ export interface ConvertDocxResult extends ConversionResult {
 }
 
 export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocxResult> {
+  const resolvedOutputDir = path.dirname(opts.outputPath);
+  const effectiveMediaDir = opts.mediaDir ?? (opts.inlineImages ? path.join(resolvedOutputDir, 'media') : undefined);
+
   const options: ConversionOptions = {
     engine: opts.engine,
     format: opts.format ?? 'gfm',
-    mediaDir: opts.mediaDir,
+    mediaDir: effectiveMediaDir,
     trackChanges: opts.trackChanges,
     luaFilters: opts.luaFilters,
     timeout: opts.timeout,
@@ -45,8 +48,7 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
   const result = await engine.convert(opts.inputPath, opts.outputPath, options);
 
   if (opts.inlineImages) {
-    const outputDir = path.dirname(opts.outputPath);
-    const inlinedMarkdown = inlineImagesTransform(result.markdown, outputDir);
+    const inlinedMarkdown = inlineImagesTransform(result.markdown, resolvedOutputDir);
     fs.writeFileSync(opts.outputPath, inlinedMarkdown, 'utf8');
     return { ...result, markdown: inlinedMarkdown, engineName: engine.name };
   }

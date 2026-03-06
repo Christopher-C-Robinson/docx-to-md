@@ -30,6 +30,11 @@ const MIME_TYPES: Record<string, string> = {
  *          image references.
  */
 export function inlineImages(markdown: string, outputDir: string): string {
+  const allowedRoot = path.resolve(outputDir);
+  const allowedRootWithSep = allowedRoot.endsWith(path.sep)
+    ? allowedRoot
+    : allowedRoot + path.sep;
+
   // Matches: ![alt text](src) or ![alt text](src "title")
   return markdown.replace(
     /!\[([^\]]*)\]\(([^)"]+?)(?:\s+"([^"]*)")?\)/g,
@@ -39,7 +44,15 @@ export function inlineImages(markdown: string, outputDir: string): string {
         return match;
       }
 
-      const imgPath = path.isAbsolute(src) ? src : path.resolve(outputDir, src);
+      // Keep absolute paths unchanged so only local, relative markdown assets are inlined.
+      if (path.isAbsolute(src)) {
+        return match;
+      }
+
+      const imgPath = path.resolve(allowedRoot, src);
+      if (!imgPath.startsWith(allowedRootWithSep) && imgPath !== allowedRoot) {
+        return match;
+      }
 
       if (!fs.existsSync(imgPath)) {
         return match;

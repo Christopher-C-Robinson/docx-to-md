@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { convertDocx, ConvertDocxOptions } from '../../src/core/convert';
 import { resolveEngine } from '../../src/core/engines/registry';
 import { ConversionResult } from '../../src/core/types';
@@ -96,6 +97,42 @@ describe('convertDocx', () => {
       '/input/file.docx',
       '/output/file.md',
       expect.objectContaining({ format: 'gfm' })
+    );
+  });
+
+
+  test('sets a default mediaDir when inlineImages is enabled', async () => {
+    const opts: ConvertDocxOptions = {
+      inputPath: '/input/file.docx',
+      outputPath: '/tmp/convert-inline-default/file.md',
+      inlineImages: true,
+    };
+
+    fs.mkdirSync('/tmp/convert-inline-default', { recursive: true });
+    await convertDocx(opts);
+
+    expect(mockEngine.convert).toHaveBeenCalledWith(
+      '/input/file.docx',
+      '/tmp/convert-inline-default/file.md',
+      expect.objectContaining({ mediaDir: '/tmp/convert-inline-default/media' })
+    );
+  });
+
+  test('respects explicit mediaDir when inlineImages is enabled', async () => {
+    const opts: ConvertDocxOptions = {
+      inputPath: '/input/file.docx',
+      outputPath: '/tmp/convert-inline-explicit/file.md',
+      mediaDir: '/custom/media',
+      inlineImages: true,
+    };
+
+    fs.mkdirSync('/tmp/convert-inline-explicit', { recursive: true });
+    await convertDocx(opts);
+
+    expect(mockEngine.convert).toHaveBeenCalledWith(
+      '/input/file.docx',
+      '/tmp/convert-inline-explicit/file.md',
+      expect.objectContaining({ mediaDir: '/custom/media' })
     );
   });
 
