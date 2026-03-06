@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>docx → md Converter</title>
-  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/markdown-it.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -534,6 +534,7 @@
     const batchTitle    = document.getElementById('batch-title');
     const batchConvertBtn = document.getElementById('batch-convert-btn');
     const batchResetBtn   = document.getElementById('batch-reset-btn');
+    const markdownRenderer = new markdownit({ html: true, linkify: true, typographer: false });
 
     function toUserError(err) {
       if (err instanceof Error) {
@@ -694,7 +695,7 @@
 
         // Markdown preview (render markdown -> rewrite image src -> sanitise)
         mdRaw.value = markdownRaw;
-        const renderedMarkdown = marked.parse(markdownRaw, { breaks: false, gfm: true });
+        const renderedMarkdown = markdownRenderer.render(markdownRaw);
         const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
         mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
         resultSection.classList.add('visible');
