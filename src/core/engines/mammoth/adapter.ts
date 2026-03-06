@@ -36,11 +36,9 @@ export class MammothAdapter implements EngineAdapter {
     const mammothOptions: {
       styleMap?: string | string[];
       convertImage?: ReturnType<typeof mammoth.images.imgElement>;
-    } = {};
-
-    if (styleMap.length > 0) {
-      mammothOptions.styleMap = styleMap;
-    }
+    } = {
+      styleMap,
+    };
 
     if (options.mediaDir) {
       const mediaDir = path.resolve(options.mediaDir);
@@ -108,14 +106,30 @@ export class MammothAdapter implements EngineAdapter {
     return { markdown: finalMd, assets, warnings, metadata };
   }
 
+  /**
+   * Built-in default style mappings for common DOCX paragraph and run styles
+   * that Mammoth does not recognise out-of-the-box (e.g. styles produced by
+   * Pandoc or Microsoft Word).  User-supplied mappings take priority because
+   * they are prepended before these defaults and Mammoth uses first-match wins.
+   */
+  private static readonly DEFAULT_STYLE_MAP: readonly string[] = [
+    "p[style-name='First Paragraph'] => p:fresh",
+    "p[style-name='Body Text'] => p:fresh",
+    "p[style-name='Compact'] => p:fresh",
+    "p[style-name='Source Code'] => pre[class=language-text]:fresh",
+    "r[style-name='Verbatim Char'] => code",
+  ];
+
   private buildStyleMap(options: ConversionOptions): string[] {
-    const map: string[] = [];
+    const userEntries: string[] = [];
     if (options.styleMap) {
       for (const entry of options.styleMap) {
-        map.push(`p[style-name='${entry.docxStyle}'] => ${entry.markdownOutput}`);
+        const prefix = entry.type === 'run' ? 'r' : 'p';
+        userEntries.push(`${prefix}[style-name='${entry.docxStyle}'] => ${entry.markdownOutput}`);
       }
     }
-    return map;
+    // User-provided rules come first so they override the built-in defaults.
+    return [...userEntries, ...MammothAdapter.DEFAULT_STYLE_MAP];
   }
 
   /**
