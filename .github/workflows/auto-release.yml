@@ -63,7 +63,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --limit 1 \
             --json tagName \
-            --jq '.[0].tagName' 2>/dev/null || true)
+            --jq '.[0].tagName // empty' 2>/dev/null || true)
           echo "tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
           if [ -z "$LATEST_TAG" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -124,12 +124,15 @@ jobs:
           has_release = os.environ['HAS_RELEASE'] == 'true'
           new_version = os.environ['NEW_VERSION']
           today       = date.today().isoformat()
+          changelog_version = new_version[1:] if new_version.startswith('v') else new_version
 
-          rev_range = f'{latest_tag}..HEAD' if has_release else 'HEAD'
-          raw = subprocess.check_output(
-              ['git', 'log', '--pretty=format:%s', rev_range],
-              text=True,
-          ).strip()
+          if has_release:
+              cmd = ['git', 'log', '--pretty=format:%s', f'{latest_tag}..HEAD']
+          else:
+              # No prior release: include full history by omitting a range.
+              cmd = ['git', 'log', '--pretty=format:%s']
+
+          raw = subprocess.check_output(cmd, text=True).strip()
 
           subjects = raw.splitlines() if raw else []
 
@@ -158,7 +161,7 @@ jobs:
           if not sections:
               sections = ['### Changed\n- No changes recorded']
 
-          new_entry = f"## [{new_version}] \u2013 {today}\n\n" + '\n\n'.join(sections) + '\n'
+          new_entry = f"## [{changelog_version}] \u2013 {today}\n\n" + '\n\n'.join(sections) + '\n'
 
           with open('CHANGELOG.md', 'r') as f:
               content = f.read()
@@ -178,7 +181,7 @@ jobs:
           with open('CHANGELOG.md', 'w') as f:
               f.write(content)
 
-          print(f"CHANGELOG.md updated with entry for {new_version}")
+          print(f"CHANGELOG.md updated with entry for {changelog_version}")
           PYEOF
 
       - name: Commit release artifacts and push to main
@@ -187,17 +190,36 @@ jobs:
           git add package.json package-lock.json CHANGELOG.md
           git commit -m "chore(release): ${{ steps.bump.outputs.new_tag }} [skip ci]"
           # Retry up to 3 times to handle concurrent pushes to main.
+          push_succeeded=false
           for attempt in 1 2 3; do
-            git push origin HEAD:main && break
+            if git push origin HEAD:main; then
+              push_succeeded=true
+              break
+            fi
             echo "Push attempt ${attempt} failed – rebasing and retrying…"
             git pull --rebase origin main
           done
+          if [ "${push_succeeded}" = "false" ]; then
+            echo "All git push attempts to main failed; aborting release."
+            exit 1
+          fi
 
-      - name: Create and push release tag
+      - name: Create release tag via GitHub API
         if: steps.check.outputs.should_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git tag "${{ steps.bump.outputs.new_tag }}"
-          git push origin "${{ steps.bump.outputs.new_tag }}"
+          TAG="${{ steps.bump.outputs.new_tag }}"
+          SHA="$(git rev-parse HEAD)"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag '${TAG}' already exists; skipping creation."
+            exit 0
+          fi
+
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${TAG}" \
+            -f sha="${SHA}"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 2. Build platform-specific Electron installers in parallel.
@@ -278,10 +300,14 @@ jobs:
           TAG_NAME: ${{ needs.check-and-version.outputs.new_tag }}
           REPO: ${{ github.repository }}
         run: |
-          gh release create "$TAG_NAME" \
-            --repo "$REPO" \
-            --title "docx-to-md $TAG_NAME" \
-            --generate-notes
+          if gh release view "$TAG_NAME" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release for tag '$TAG_NAME' already exists; skipping creation."
+          else
+            gh release create "$TAG_NAME" \
+              --repo "$REPO" \
+              --title "docx-to-md $TAG_NAME" \
+              --generate-notes
+          fi
 
           mapfile -t files < <(find release-assets -maxdepth 1 -type f \
             \( -name "*-mac-*.zip" \
