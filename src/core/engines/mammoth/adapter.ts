@@ -67,14 +67,17 @@ export class MammothAdapter implements EngineAdapter {
           const existing = contentMap.get(imageBase64);
           if (existing) {
             if (!renamedKeys.has(imageBase64)) {
-              // First encounter: rename to the next sequential filename.
-              imageIndex++;
-              const ext = path.extname(existing) || `.${image.contentType.split('/')[1] ?? 'png'}`;
-              const newName = `image-${String(imageIndex).padStart(2, '0')}${ext}`;
-              const newPath = path.join(mediaDir, newName);
-              fs.renameSync(existing, newPath);
-              const idx = assets.indexOf(existing);
-              if (idx !== -1) assets[idx] = newPath;
+              // First encounter: rename to the next sequential filename,
+              // avoiding collisions with any existing files.
+              const ext = this.resolveImageExtension(existing, image.contentType);
+              const newPath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
+
+              if (existing !== newPath) {
+                fs.renameSync(existing, newPath);
+                const idx = assets.indexOf(existing);
+                if (idx !== -1) assets[idx] = newPath;
+              }
+
               renamedKeys.add(imageBase64);
               contentMap.set(imageBase64, newPath);
             }
@@ -86,10 +89,8 @@ export class MammothAdapter implements EngineAdapter {
 
           // Fallback: image not found in the DOCX media directory (e.g. an
           // embedded OLE object).  Write it with a safe sequential name.
-          imageIndex++;
-          const ext = image.contentType.split('/')[1] ?? 'png';
-          const filename = `image-${String(imageIndex).padStart(2, '0')}.${ext}`;
-          const filepath = path.join(mediaDir, filename);
+          const ext = this.resolveImageExtension('', image.contentType);
+          const filepath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
           fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
           assets.push(filepath);
           return { src: path.relative(path.dirname(outputPath), filepath) };
@@ -172,5 +173,41 @@ export class MammothAdapter implements EngineAdapter {
       .replace(/(<[^>]+)\s+on\w+\s*=\s*"[^"]*"/gi, '$1')
       .replace(/(<[^>]+)\s+on\w+\s*=\s*'[^']*'/gi, '$1')
       .replace(/(<[^>]+)\s+on\w+\s*=[^\s>]*/gi, '$1');
+  }
+
+  /**
+   * Uses either an existing file extension or a safe extension derived from
+   * contentType to avoid building file paths from uncontrolled strings.
+   */
+  private resolveImageExtension(existingPath: string, contentType: string): string {
+    const existingExt = path.extname(existingPath);
+    if (existingExt) return existingExt;
+
+    const typeSuffix = contentType.split('/')[1] ?? 'png';
+    const sanitized = typeSuffix.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return sanitized ? `.${sanitized}` : '.png';
+  }
+
+  /**
+   * Generates the next sequential image filename under mediaDir and ensures
+   * the resolved path remains within that directory.
+   */
+  private nextAvailableImagePath(mediaDir: string, ext: string, nextIndex: () => number): string {
+    const normalizedMediaDir = path.resolve(mediaDir);
+
+    // Loop until we find a deterministic unused destination name.
+    while (true) {
+      const index = nextIndex();
+      const filename = `image-${String(index).padStart(2, '0')}${ext}`;
+      const candidate = path.resolve(normalizedMediaDir, filename);
+
+      if (!candidate.startsWith(`${normalizedMediaDir}${path.sep}`)) {
+        throw new Error(`Unsafe media path generated: ${filename}`);
+      }
+
+      if (!fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
   }
 }

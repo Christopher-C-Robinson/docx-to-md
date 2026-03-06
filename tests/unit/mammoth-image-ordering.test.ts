@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import * as fs from 'fs';
 import * as path from 'path';
 import { MammothAdapter } from '../../src/core/engines/mammoth/adapter';
 import { extractMedia } from '../../src/core/assets/extractMedia';
@@ -10,6 +11,7 @@ jest.mock('fs', () => ({
   ...jest.requireActual('fs'),
   writeFileSync: jest.fn(),
   renameSync: jest.fn(),
+  existsSync: jest.fn(() => false),
 }));
 
 const mockMammoth = mammoth as jest.Mocked<typeof mammoth>;
@@ -60,6 +62,8 @@ describe('MammothAdapter – deterministic image ordering', () => {
   beforeEach(() => {
     adapter = new MammothAdapter();
     jest.clearAllMocks();
+    const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    (existsSync as jest.Mock).mockImplementation(() => false);
   });
 
   /**
@@ -157,6 +161,45 @@ describe('MammothAdapter – deterministic image ordering', () => {
     expect(renameSync).toHaveBeenCalledWith(
       path.join(mediaDir, 'photo.jpg'),
       path.join(mediaDir, 'image-01.jpg'),
+    );
+  });
+
+
+  test('skips rename when source path already matches sequential destination', async () => {
+    const origPaths: Record<string, string> = {
+      aaa: path.join(mediaDir, 'image-01.png'),
+    };
+
+    const result = await runWithImages(origPaths, [{ base64: 'aaa' }]);
+
+    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(renameSync).not.toHaveBeenCalled();
+    expect(result.assets).toContain(path.join(mediaDir, 'image-01.png'));
+  });
+
+  test('uses next free sequential filename when target already exists', async () => {
+    const origPaths: Record<string, string> = {
+      aaa: path.join(mediaDir, 'image5.png'),
+      bbb: path.join(mediaDir, 'image6.png'),
+    };
+
+    const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) =>
+      String(candidate) === path.join(mediaDir, 'image-01.png'),
+    );
+
+    await runWithImages(origPaths, [{ base64: 'aaa' }, { base64: 'bbb' }]);
+
+    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(renameSync).toHaveBeenNthCalledWith(
+      1,
+      path.join(mediaDir, 'image5.png'),
+      path.join(mediaDir, 'image-02.png'),
+    );
+    expect(renameSync).toHaveBeenNthCalledWith(
+      2,
+      path.join(mediaDir, 'image6.png'),
+      path.join(mediaDir, 'image-03.png'),
     );
   });
 
