@@ -15,6 +15,8 @@ export interface ConversionOptions {
   luaFilters?: string[];
   timeout?: number;
   styleMap?: StyleMapping[];
+  /** Maximum accepted input file size in bytes. Defaults to 50 MB. */
+  maxFileSizeBytes?: number;
 }
 
 export interface ConversionResult {

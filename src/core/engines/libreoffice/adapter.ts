@@ -5,8 +5,18 @@ import * as os from 'os';
 import { EngineAdapter } from '../interface';
 import { ConversionOptions, ConversionResult, EngineType } from '../../types';
 import { extractMedia } from '../../assets/extractMedia';
+import {
+  MAX_STDERR_BYTES,
+  buildSandboxedSpawn,
+  validateInputFile,
+} from '../sandbox';
 
 const LO_TIMEOUT_MS = 120_000;
+
+/** Virtual-memory limit (MB) for the soffice process on Linux. */
+const LO_MEM_LIMIT_MB = 2048;
+/** CPU-time limit (seconds) for the soffice process on Linux. */
+const LO_CPU_LIMIT_SECS = 300;
 
 export class LibreOfficeAdapter implements EngineAdapter {
   readonly name: EngineType = 'libreoffice';
@@ -33,6 +43,8 @@ export class LibreOfficeAdapter implements EngineAdapter {
     const assets: string[] = [];
     const metadata: Record<string, unknown> = {};
     const timeout = options.timeout ?? LO_TIMEOUT_MS;
+
+    validateInputFile(inputPath, options.maxFileSizeBytes);
 
     const outDir = path.dirname(outputPath);
     fs.mkdirSync(outDir, { recursive: true });
@@ -77,14 +89,20 @@ export class LibreOfficeAdapter implements EngineAdapter {
 
   private runLibreOffice(inputPath: string, outDir: string, timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('soffice', [
+      const sofficeArgs = [
         '--headless',
         '--convert-to', 'md:Markdown',
         '--outdir', outDir,
         inputPath,
-      ]);
+      ];
+      const [spawnCmd, spawnArgs] = buildSandboxedSpawn('soffice', sofficeArgs, {
+        memLimitMb: LO_MEM_LIMIT_MB,
+        cpuLimitSecs: LO_CPU_LIMIT_SECS,
+      });
+      const proc = spawn(spawnCmd, spawnArgs);
 
       const stderr: string[] = [];
+      let stderrBytes = 0;
       let timedOut = false;
 
       const timer = setTimeout(() => {
@@ -93,7 +111,16 @@ export class LibreOfficeAdapter implements EngineAdapter {
         reject(new Error(`LibreOffice timed out after ${timeout}ms`));
       }, timeout);
 
-      proc.stderr.on('data', (d: Buffer) => stderr.push(d.toString()));
+      proc.stderr.on('data', (d: Buffer) => {
+        stderrBytes += d.length;
+        if (stderrBytes > MAX_STDERR_BYTES) {
+          proc.kill('SIGKILL');
+          clearTimeout(timer);
+          reject(new Error(`LibreOffice stderr exceeded ${MAX_STDERR_BYTES} bytes`));
+          return;
+        }
+        stderr.push(d.toString());
+      });
       proc.on('error', err => { clearTimeout(timer); reject(err); });
       proc.on('close', code => {
         clearTimeout(timer);
