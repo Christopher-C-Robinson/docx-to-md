@@ -523,6 +523,45 @@
     const batchConvertBtn = document.getElementById('batch-convert-btn');
     const batchResetBtn   = document.getElementById('batch-reset-btn');
 
+    function toUserError(err) {
+      if (err instanceof Error) {
+        if (err.message.includes('Failed to fetch')) {
+          return 'Could not reach the local conversion server. Please restart the app and try again.';
+        }
+        return err.message;
+      }
+      return 'Request failed. Please try again.';
+    }
+
+    async function readApiResponse(res) {
+      const bodyText = await res.text();
+      let data = null;
+
+      if (bodyText) {
+        try {
+          data = JSON.parse(bodyText);
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!res.ok) {
+        if (data && typeof data === 'object' && typeof data.error === 'string') {
+          throw new Error(data.error);
+        }
+        const snippet = bodyText.trim().slice(0, 200);
+        throw new Error(
+          snippet ? `Server error ${res.status}: ${snippet}` : `Server error ${res.status}`
+        );
+      }
+
+      if (!data || typeof data !== 'object') {
+        throw new Error('Server returned an invalid response.');
+      }
+
+      return data;
+    }
+
     // ── Tab switching ──────────────────────────────────────────────────────
     tabPreview.addEventListener('click', () => {
       tabPreview.classList.add('active'); tabPreview.setAttribute('aria-selected','true');
@@ -629,12 +668,7 @@
 
       try {
         const res = await fetch('/api/convert', { method: 'POST', body: formData });
-        const data = await res.json();
-
-        if (!res.ok) {
-          showError(data.error || `Server error: ${res.status}`);
-          return;
-        }
+        const data = await readApiResponse(res);
 
         sessionId = data.sessionId;
         markdownRaw = data.markdown || '';
@@ -663,8 +697,8 @@
 
         statusBar.classList.remove('visible');
         resetBtn.style.display = '';
-      } catch {
-        showError('Network error. Is the server running?');
+      } catch (err) {
+        showError(toUserError(err));
       }
     }
 
@@ -748,19 +782,13 @@
           const formData = new FormData();
           formData.append('file', item.file);
           const res = await fetch('/api/convert', { method: 'POST', body: formData });
-          const data = await res.json();
-
-          if (!res.ok) {
-            item.status = 'error';
-            item.error = data.error || `Server error ${res.status}`;
-          } else {
-            item.sessionId = data.sessionId;
-            item.hasImages = Array.isArray(data.images) && data.images.length > 0;
-            item.status = 'done';
-          }
-        } catch {
+          const data = await readApiResponse(res);
+          item.sessionId = data.sessionId;
+          item.hasImages = Array.isArray(data.images) && data.images.length > 0;
+          item.status = 'done';
+        } catch (err) {
           item.status = 'error';
-          item.error = 'Network error. Is the server running?';
+          item.error = toUserError(err);
         }
         updateBatchItem(i);
       }
