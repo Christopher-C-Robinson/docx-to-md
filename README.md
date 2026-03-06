@@ -17,6 +17,68 @@
 
 ## Installation
 
+### Desktop Application (Windows & macOS)
+
+The recommended way to use docx-to-md on Windows and macOS is via the native desktop application built with Electron.
+
+#### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18 or later and npm (required to build from source)
+- [Pandoc](https://pandoc.org/installing.html) — recommended conversion engine (optional; Mammoth is used as fallback)
+  - macOS: `brew install pandoc`
+  - Windows: download the installer from <https://pandoc.org/installing.html>
+
+#### Option A — Download a pre-built release
+
+1. Go to the [Releases page](https://github.com/Christopher-C-Robinson/docx-to-md/releases) and download the package for your platform:
+
+   | Platform | File to download |
+   |----------|-----------------|
+   | Windows (installer) | `docx2md-<version>-win-x64.exe` |
+   | Windows (portable)  | `docx2md-<version>-win-portable-x64.exe` |
+   | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.dmg` |
+   | macOS (Intel)         | `docx2md-<version>-mac-x64.dmg` |
+
+2. **Windows — installer**: Run the `.exe` setup wizard.  Choose an installation directory, optionally create a Desktop shortcut, and follow the prompts.
+
+3. **Windows — portable**: No installation needed.  Place the `.exe` anywhere and run it directly.
+
+4. **macOS**: Open the `.dmg` file, drag **docx2md** to your *Applications* folder, then launch it from Launchpad or Spotlight.
+   > **Gatekeeper notice**: macOS may show a warning because the app is not notarized.  Right-click the app, choose **Open**, then click **Open** in the dialog.
+
+#### Option B — Build from source
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Christopher-C-Robinson/docx-to-md.git
+cd docx-to-md
+
+# 2. Install dependencies
+npm install
+
+# 3a. Build and package for your current platform
+npm run electron:dist
+
+# 3b. Or build for a specific platform
+npm run electron:dist:mac   # macOS DMG + zip
+npm run electron:dist:win   # Windows NSIS installer + portable exe
+npm run electron:dist:linux # Linux AppImage
+```
+
+Packaged installers are written to the `release/` directory.
+
+#### Running in development
+
+```bash
+npm run electron:dev
+```
+
+This builds the TypeScript sources and launches Electron pointing at the local Express server.
+
+---
+
+### CLI / npm package
+
 ```bash
 npm install -g docx-to-md
 # or
