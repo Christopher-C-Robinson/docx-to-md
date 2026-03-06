@@ -633,7 +633,8 @@
         copyMdBtn.textContent = '✓ Copied!';
         setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       } catch {
-        copyMdBtn.textContent = 'Copy failed';
+        copyMdBtn.textContent = '✗ Copy failed';
+        setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       }
     });
 
