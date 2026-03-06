@@ -174,6 +174,19 @@ See [docs/architecture.md](docs/architecture.md) for a detailed overview.
 
 See [SECURITY.md](SECURITY.md) for the threat model and vulnerability reporting.
 
+### Automated Security Features
+
+This repository is set up to use the following security tooling. Some features also require
+enabling them in your repository's GitHub security settings.
+
+| Feature | Tool | Details |
+|---------|------|---------|
+| Dependency update PRs | [Dependabot](https://docs.github.com/en/code-security/dependabot) | Weekly PRs for npm and GitHub Actions (configured via this repo) |
+| Vulnerability alerts | Dependabot alerts | Alerts on CVEs in direct/transitive deps (requires Dependabot alerts to be enabled in GitHub settings) |
+| Automatic security updates | Dependabot security updates | Auto-PRs for security-only fixes (requires security updates to be enabled in GitHub settings) |
+| Secret scanning | GitHub Secret Scanning | Detects accidental credential commits and raises alerts (requires Secret Scanning to be enabled in GitHub settings) |
+| Static analysis | GitHub Code Scanning (CodeQL) | Runs via GitHub Actions when Code Scanning is enabled in GitHub settings and the workflow is configured |
+
 ## License
 
 MIT
