@@ -107,10 +107,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.prepare.outputs.tag }}
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" --title "docx-to-md $TAG_NAME" --generate-notes
+          if ! gh release view "$TAG_NAME" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" --repo "$REPO" --title "docx-to-md $TAG_NAME" --generate-notes
           fi
 
           mapfile -t files < <(find release-assets -maxdepth 1 -type f \
@@ -120,4 +121,4 @@ jobs:
             exit 1
           fi
 
-          gh release upload "$TAG_NAME" "${files[@]}" --clobber
+          gh release upload "$TAG_NAME" "${files[@]}" --repo "$REPO" --clobber
