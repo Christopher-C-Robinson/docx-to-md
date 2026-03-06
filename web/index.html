@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>docx → md Converter</title>
-  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/markdown-it.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -679,9 +679,10 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (sanitised via DOMPurify + marked)
+        // Markdown preview (sanitised via DOMPurify + markdown-it)
         mdRaw.value = markdownRaw;
-        mdPreview.innerHTML = DOMPurify.sanitize(marked.parse(markdownRaw, { breaks: false, gfm: true }));
+        const md = new markdownit({ html: true, linkify: true, typographer: true });
+        mdPreview.innerHTML = DOMPurify.sanitize(md.render(markdownRaw));
         resultSection.classList.add('visible');
 
         // Images
