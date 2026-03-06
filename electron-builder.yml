@@ -2,8 +2,9 @@ appId: com.docxtomd.app
 productName: docx2md
 copyright: Copyright © 2024 docx-to-md contributors
 
-# Entry point: compiled Electron main process
-main: dist-electron/main.js
+# Electron entry point for the packaged app
+extraMetadata:
+  main: dist-electron/main.js
 
 directories:
   output: release
@@ -20,15 +21,9 @@ npmRebuild: true
 
 mac:
   category: public.app-category.productivity
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
-    - target: zip
-      arch:
-        - x64
-        - arm64
+    - zip
 
 win:
   target:

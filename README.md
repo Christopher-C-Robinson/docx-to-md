@@ -38,14 +38,15 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
    |----------|-----------------|
    | Windows (installer) | `docx2md-<version>-win-x64.exe` |
    | Windows (portable)  | `docx2md-<version>-win-portable-x64.exe` |
-   | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.dmg` |
-   | macOS (Intel)         | `docx2md-<version>-mac-x64.dmg` |
+   | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.zip` |
+   | macOS (Intel)         | `docx2md-<version>-mac-x64.zip` |
+   | Linux                 | `docx2md-<version>-linux-x86_64.AppImage` |
 
 2. **Windows — installer**: Run the `.exe` setup wizard.  Choose an installation directory, optionally create a Desktop shortcut, and follow the prompts.
 
 3. **Windows — portable**: No installation needed.  Place the `.exe` anywhere and run it directly.
 
-4. **macOS**: Open the `.dmg` file, drag **docx2md** to your *Applications* folder, then launch it from Launchpad or Spotlight.
+4. **macOS**: Open the `.zip`, drag **docx2md.app** to your *Applications* folder, then launch it from Launchpad or Spotlight.
    > **Gatekeeper notice**: macOS may show a warning because the app is not notarized.  Right-click the app, choose **Open**, then click **Open** in the dialog.
 
 5. (Optional) Install Pandoc with the GUI installer from pandoc.org for improved DOCX fidelity. If Pandoc is not installed, docx-to-md automatically falls back to Mammoth.
@@ -70,12 +71,29 @@ npm install
 npm run electron:dist
 
 # 3b. Or build for a specific platform
-npm run electron:dist:mac   # macOS DMG + zip
+npm run electron:dist:mac   # macOS x64 zip + arm64 zip
 npm run electron:dist:win   # Windows NSIS installer + portable exe
 npm run electron:dist:linux # Linux AppImage
 ```
 
 Packaged installers are written to the `release/` directory.
+
+#### Maintainers — publish a GitHub release
+
+This repository includes an automated release workflow at `.github/workflows/release.yml`.
+
+```bash
+# 1) Create and push a version tag
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+When the tag is pushed, GitHub Actions will:
+- build Windows, macOS, and Linux Electron installers
+- create a GitHub Release for that tag if it does not exist
+- upload the generated files as release assets
+
+You can also run the workflow manually from the Actions tab using **Release** -> **Run workflow** and passing an existing tag.
 
 #### Running in development
 
