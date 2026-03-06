@@ -4,8 +4,18 @@ import * as path from 'path';
 import { EngineAdapter } from '../interface';
 import { ConversionOptions, ConversionResult, EngineType } from '../../types';
 import { MammothAdapter } from '../mammoth/adapter';
+import {
+  MAX_STDERR_BYTES,
+  buildSandboxedSpawn,
+  validateInputFile,
+} from '../sandbox';
 
 const PANDOC_TIMEOUT_MS = 60_000;
+
+/** Virtual-memory limit (MB) for the pandoc process on Linux. */
+const PANDOC_MEM_LIMIT_MB = 1024;
+/** CPU-time limit (seconds) for the pandoc process on Linux. */
+const PANDOC_CPU_LIMIT_SECS = 120;
 
 export class PandocAdapter implements EngineAdapter {
   readonly name: EngineType = 'pandoc';
@@ -34,6 +44,8 @@ export class PandocAdapter implements EngineAdapter {
 
     const format = options.format ?? 'gfm';
     const timeout = options.timeout ?? PANDOC_TIMEOUT_MS;
+
+    validateInputFile(inputPath, options.maxFileSizeBytes);
 
     const cmd: string[] = ['-f', 'docx', '-t', format];
 
@@ -94,8 +106,13 @@ export class PandocAdapter implements EngineAdapter {
 
   private runPandoc(args: string[], timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('pandoc', args);
+      const [spawnCmd, spawnArgs] = buildSandboxedSpawn('pandoc', args, {
+        memLimitMb: PANDOC_MEM_LIMIT_MB,
+        cpuLimitSecs: PANDOC_CPU_LIMIT_SECS,
+      });
+      const proc = spawn(spawnCmd, spawnArgs);
       const stderr: string[] = [];
+      let stderrBytes = 0;
       let timedOut = false;
 
       const timer = setTimeout(() => {
@@ -104,7 +121,16 @@ export class PandocAdapter implements EngineAdapter {
         reject(new Error(`Pandoc timed out after ${timeout}ms`));
       }, timeout);
 
-      proc.stderr.on('data', (data: Buffer) => stderr.push(data.toString()));
+      proc.stderr.on('data', (data: Buffer) => {
+        stderrBytes += data.length;
+        if (stderrBytes > MAX_STDERR_BYTES) {
+          proc.kill('SIGKILL');
+          clearTimeout(timer);
+          reject(new Error(`Pandoc stderr exceeded ${MAX_STDERR_BYTES} bytes`));
+          return;
+        }
+        stderr.push(data.toString());
+      });
       proc.on('error', (err: Error) => { clearTimeout(timer); reject(err); });
       proc.on('close', (code: number | null) => {
         clearTimeout(timer);
