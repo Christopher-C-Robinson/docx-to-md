@@ -190,6 +190,37 @@ describe('Formatter – image placement', () => {
     expect(md).toContain('Intro\n\n![one](img1.png)\n\nMiddle\n\n![two](img2.png)\n\nEnd');
   });
 
+
+  test('images inside markdown table cells stay inline without injecting blank lines', () => {
+    const table: TableNode = {
+      type: 'table',
+      children: [
+        {
+          type: 'tableRow',
+          children: [
+            { type: 'tableCell', children: [text('Header')] } as TableCellNode,
+          ],
+        },
+        {
+          type: 'tableRow',
+          children: [
+            {
+              type: 'tableCell',
+              children: [
+                text('Before '),
+                image('img.png', 'alt'),
+                text(' after'),
+              ],
+            } as TableCellNode,
+          ],
+        },
+      ],
+    };
+
+    const md = formatter.serialize(makeRoot(table));
+    expect(md).toContain('| Before ![alt](img.png) after |');
+    expect(md).not.toContain('![alt](img.png)\n\n');
+  });
   test('block-level image with title retains title attribute and spacing', () => {
     const root = makeRoot(
       paragraph('Caption:'),

@@ -92,7 +92,7 @@ export class MarkdownFormatter {
 
     const rawRows = node.children.map(row =>
       (row as TableRowNode).children.map(cell =>
-        this.serializeChildren(cell as Parent, indent).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
+        this.serializeChildren(cell as Parent, indent, true).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
       )
     );
 
