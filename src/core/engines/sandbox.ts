@@ -41,10 +41,11 @@ export function buildSandboxedSpawn(
   const memKb = limits.memLimitMb * 1024;
   const cpuSecs = limits.cpuLimitSecs;
 
-  // POSIX sh built-in; works in dash/bash.
-  // "$@" expands to the positional parameters ($1 … $n) passed after '--'.
-  const script = `ulimit -v ${memKb} -t ${cpuSecs}; exec ${cmd} "$@"`;
-  return ['sh', ['-c', script, '--', ...args]];
+  // POSIX sh built-in; both limits are applied as separate invocations for
+  // compatibility with dash, and execution only proceeds if all succeed.
+  // "$0" is set to cmd and "$@" expands to the remaining positional args.
+  const script = `ulimit -v ${memKb} && ulimit -t ${cpuSecs} && exec "$0" "$@"`;
+  return ['sh', ['-c', script, cmd, ...args]];
 }
 
 /**
@@ -61,9 +62,13 @@ export function validateInputFile(
   let stat: fs.Stats;
   try {
     stat = fs.statSync(filePath);
-  } catch {
-    // Non-existent file – let the engine report the error in its own way.
-    return;
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      // Non-existent file – let the engine report the error in its own way.
+      return;
+    }
+    throw err;
   }
 
   if (stat.size > maxBytes) {

@@ -108,10 +108,10 @@ describe('buildSandboxedSpawn', () => {
       expect(cmd).toBe('sh');
       expect(args[0]).toBe('-c');
       // Script must contain both ulimit directives and exec the real binary.
-      expect(args[1]).toMatch(/ulimit -v \d+ -t \d+/);
-      expect(args[1]).toContain('exec pandoc');
-      // Original args are passed as positional parameters after '--'.
-      expect(args).toContain('--');
+      expect(args[1]).toMatch(/ulimit -v \d+ && ulimit -t \d+/);
+      expect(args[1]).toContain('exec "$0" "$@"');
+      // Original command/args are passed as positional parameters.
+      expect(args[2]).toBe('pandoc');
       expect(args).toContain('-f');
       expect(args).toContain('docx');
     });
@@ -122,14 +122,14 @@ describe('buildSandboxedSpawn', () => {
       const [, args] = buildSandboxedSpawn('soffice', [], { memLimitMb: 1024, cpuLimitSecs: 300 });
       const script = args[1] as string;
       // 1024 MB → 1 048 576 KB
-      expect(script).toContain(`ulimit -v ${1024 * 1024} -t 300`);
+      expect(script).toContain(`ulimit -v ${1024 * 1024} && ulimit -t 300`);
     });
   });
 
   test('uses exec so the shell is replaced by the real process', () => {
     withPlatform('linux', () => {
       const [, args] = buildSandboxedSpawn('pandoc', [], limits);
-      expect(args[1]).toMatch(/;\s*exec /);
+      expect(args[1]).toMatch(/&&\s*exec /);
     });
   });
 });
@@ -211,4 +211,3 @@ describe('sandbox constants', () => {
     expect(MAX_STDERR_BYTES).toBe(1 * 1024 * 1024);
   });
 });
-
