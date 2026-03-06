@@ -36,11 +36,11 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
 
    | Platform | File to download |
    |----------|-----------------|
-   | Windows (installer) | `docx2md-<version>-win-x64.exe` |
-   | Windows (portable)  | `docx2md-<version>-win-portable-x64.exe` |
+   | Windows (installer) | `docx2md-<version>-win-x64-installer.exe` |
+   | Windows (portable)  | `docx2md-<version>-win-x64-portable.exe` |
    | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.zip` |
    | macOS (Intel)         | `docx2md-<version>-mac-x64.zip` |
-   | Linux                 | `docx2md-<version>-linux-x86_64.AppImage` |
+   | Linux                 | `docx2md-<version>-linux-x64.AppImage` |
 
 2. **Windows — installer**: Run the `.exe` setup wizard.  Choose an installation directory, optionally create a Desktop shortcut, and follow the prompts.
 
@@ -48,6 +48,9 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
 
 4. **macOS**: Open the `.zip`, drag **docx2md.app** to your *Applications* folder, then launch it from Launchpad or Spotlight.
    > **Gatekeeper notice**: macOS may show a warning because the app is not notarized.  Right-click the app, choose **Open**, then click **Open** in the dialog.
+   > If you only see **Move to Trash / Done**, go to **System Settings -> Privacy & Security** and click **Open Anyway** for `docx2md.app`.
+   > Terminal fallback:
+   > `xattr -dr com.apple.quarantine /Applications/docx2md.app && open /Applications/docx2md.app`
 
 5. (Optional) Install Pandoc with the GUI installer from pandoc.org for improved DOCX fidelity. If Pandoc is not installed, docx-to-md automatically falls back to Mammoth.
 
