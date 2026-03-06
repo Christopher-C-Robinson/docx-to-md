@@ -42,6 +42,7 @@ export class MammothAdapter implements EngineAdapter {
 
     if (options.mediaDir) {
       const mediaDir = path.resolve(options.mediaDir);
+      const normalizedMediaDir = path.resolve(mediaDir);
       let contentMap = new Map<string, string>();
 
       // Extract all media from the DOCX archive up-front so that images get
@@ -66,25 +67,30 @@ export class MammothAdapter implements EngineAdapter {
         return image.read('base64').then((imageBase64) => {
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            if (!renamedKeys.has(imageBase64)) {
-              // First encounter: rename to the next sequential filename,
-              // avoiding collisions with any existing files.
-              const ext = this.resolveImageExtension(existing, image.contentType);
-              const newPath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
+            const resolvedExisting = path.resolve(existing);
+            if (!this.isPathWithinDirectory(normalizedMediaDir, resolvedExisting)) {
+              warnings.push(`Skipped unsafe media path from content map: ${existing}`);
+            } else {
+              if (!renamedKeys.has(imageBase64)) {
+                // First encounter: rename to the next sequential filename,
+                // avoiding collisions with any existing files.
+                const ext = this.resolveImageExtension(resolvedExisting, image.contentType);
+                const newPath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
 
-              if (existing !== newPath) {
-                fs.renameSync(existing, newPath);
-                const idx = assets.indexOf(existing);
-                if (idx !== -1) assets[idx] = newPath;
+                if (resolvedExisting !== newPath) {
+                  fs.renameSync(resolvedExisting, newPath);
+                  const idx = assets.indexOf(existing);
+                  if (idx !== -1) assets[idx] = newPath;
+                }
+
+                renamedKeys.add(imageBase64);
+                contentMap.set(imageBase64, newPath);
               }
-
-              renamedKeys.add(imageBase64);
-              contentMap.set(imageBase64, newPath);
+              // contentMap is guaranteed to have a value for imageBase64 here: it
+              // was either just set above or was set during a previous encounter.
+              const finalPath = contentMap.get(imageBase64) ?? resolvedExisting;
+              return { src: path.relative(path.dirname(outputPath), finalPath) };
             }
-            // contentMap is guaranteed to have a value for imageBase64 here: it
-            // was either just set above or was set during a previous encounter.
-            const finalPath = contentMap.get(imageBase64) ?? existing;
-            return { src: path.relative(path.dirname(outputPath), finalPath) };
           }
 
           // Fallback: image not found in the DOCX media directory (e.g. an
@@ -201,7 +207,7 @@ export class MammothAdapter implements EngineAdapter {
       const filename = `image-${String(index).padStart(2, '0')}${ext}`;
       const candidate = path.resolve(normalizedMediaDir, filename);
 
-      if (!candidate.startsWith(`${normalizedMediaDir}${path.sep}`)) {
+      if (!this.isPathWithinDirectory(normalizedMediaDir, candidate)) {
         throw new Error(`Unsafe media path generated: ${filename}`);
       }
 
@@ -210,4 +216,10 @@ export class MammothAdapter implements EngineAdapter {
       }
     }
   }
+
+  private isPathWithinDirectory(directory: string, candidate: string): boolean {
+    const relative = path.relative(path.resolve(directory), path.resolve(candidate));
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
 }
