@@ -1,0 +1,296 @@
+name: Auto Release
+
+# Runs on the 1st of every month at midnight UTC, or on demand.
+# On demand: go to Actions → Auto Release → Run workflow.
+#   bump  – version segment to increment (default: patch)
+#   force – create a release even when no new commits exist
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type (patch, minor, or major)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      force:
+        description: 'Create a release even if no new commits since last release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Decide whether to release, bump the version, and update the changelog.
+  # ──────────────────────────────────────────────────────────────────────────
+  check-and-version:
+    name: Check for changes and bump version
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      new_tag: ${{ steps.bump.outputs.new_tag }}
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Get the latest published release tag
+        id: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 1 \
+            --json tagName \
+            --jq '.[0].tagName' 2>/dev/null || true)
+          echo "tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          if [ -z "$LATEST_TAG" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Count commits since last release
+        id: check
+        run: |
+          FORCE="${{ inputs.force || 'false' }}"
+          LATEST_TAG="${{ steps.latest.outputs.tag }}"
+          HAS_RELEASE="${{ steps.latest.outputs.found }}"
+
+          if [ "$HAS_RELEASE" = "true" ]; then
+            COMMIT_COUNT=$(git rev-list "${LATEST_TAG}..HEAD" --count)
+          else
+            COMMIT_COUNT=$(git rev-list HEAD --count)
+          fi
+
+          echo "commit_count=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Commits since last release: ${COMMIT_COUNT}"
+
+          if [ "${COMMIT_COUNT}" -gt 0 ] || [ "${FORCE}" = "true" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "No new commits – skipping release."
+          fi
+
+      - name: Configure Git identity
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version in package.json / package-lock.json
+        if: steps.check.outputs.should_release == 'true'
+        id: bump
+        run: |
+          BUMP_TYPE="${{ inputs.bump || 'patch' }}"
+          NEW_TAG=$(npm version "${BUMP_TYPE}" --no-git-tag-version)
+          echo "new_tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Bumped to ${NEW_TAG}"
+
+      - name: Update CHANGELOG.md
+        if: steps.check.outputs.should_release == 'true'
+        env:
+          LATEST_TAG: ${{ steps.latest.outputs.tag }}
+          HAS_RELEASE: ${{ steps.latest.outputs.found }}
+          NEW_VERSION: ${{ steps.bump.outputs.new_tag }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re, subprocess
+          from datetime import date
+
+          latest_tag  = os.environ['LATEST_TAG']
+          has_release = os.environ['HAS_RELEASE'] == 'true'
+          new_version = os.environ['NEW_VERSION']
+          today       = date.today().isoformat()
+
+          rev_range = f'{latest_tag}..HEAD' if has_release else 'HEAD'
+          raw = subprocess.check_output(
+              ['git', 'log', '--pretty=format:%s', rev_range],
+              text=True,
+          ).strip()
+
+          subjects = raw.splitlines() if raw else []
+
+          # Bucket commits by conventional-commit type prefix.
+          buckets = {'Added': [], 'Fixed': [], 'Changed': []}
+          for s in subjects:
+              m = re.match(r'^(feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert)(\(.+?\))?!?:\s*', s)
+              if m:
+                  kind = m.group(1)
+                  msg  = s[m.end():]
+                  if kind == 'feat':
+                      buckets['Added'].append(msg)
+                  elif kind == 'fix':
+                      buckets['Fixed'].append(msg)
+                  else:
+                      buckets['Changed'].append(msg)
+              else:
+                  buckets['Changed'].append(s)
+
+          sections = []
+          for heading, items in buckets.items():
+              if items:
+                  body = '\n'.join(f'- {i}' for i in items)
+                  sections.append(f'### {heading}\n{body}')
+
+          if not sections:
+              sections = ['### Changed\n- No changes recorded']
+
+          new_entry = f"## [{new_version}] \u2013 {today}\n\n" + '\n\n'.join(sections) + '\n'
+
+          with open('CHANGELOG.md', 'r') as f:
+              content = f.read()
+
+          # Insert the new entry before the first existing '## ' section.
+          insert_pos = content.find('\n## ')
+          if insert_pos == -1:
+              content = content.rstrip() + '\n\n' + new_entry
+          else:
+              content = (
+                  content[:insert_pos + 1]
+                  + new_entry
+                  + '\n'
+                  + content[insert_pos + 1:]
+              )
+
+          with open('CHANGELOG.md', 'w') as f:
+              f.write(content)
+
+          print(f"CHANGELOG.md updated with entry for {new_version}")
+          PYEOF
+
+      - name: Commit release artifacts and push to main
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "chore(release): ${{ steps.bump.outputs.new_tag }} [skip ci]"
+          # Retry up to 3 times to handle concurrent pushes to main.
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && break
+            echo "Push attempt ${attempt} failed – rebasing and retrying…"
+            git pull --rebase origin main
+          done
+
+      - name: Create and push release tag
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          git tag "${{ steps.bump.outputs.new_tag }}"
+          git push origin "${{ steps.bump.outputs.new_tag }}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Build platform-specific Electron installers in parallel.
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.target.label }}
+    needs: check-and-version
+    if: needs.check-and-version.outputs.should_release == 'true'
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - id: mac
+            label: macOS
+            os: macos-latest
+            script: electron:dist:mac
+          - id: win
+            label: Windows
+            os: windows-latest
+            script: electron:dist:win
+          - id: linux
+            label: Linux
+            os: ubuntu-latest
+            script: electron:dist:linux
+
+    steps:
+      - name: Checkout source at release tag
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ needs.check-and-version.outputs.new_tag }}
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Build installer artifacts
+        run: npm run ${{ matrix.target.script }}
+
+      - name: Upload artifacts (${{ matrix.target.label }})
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target.id }}
+          path: |
+            release/*-mac-*.zip
+            release/*-win-*-installer.exe
+            release/*-win-*-portable.exe
+            release/*-linux-*.AppImage
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. Create the GitHub release and upload all build artifacts.
+  # ──────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish GitHub release
+    needs:
+      - check-and-version
+      - build
+    if: needs.check-and-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release and upload assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.check-and-version.outputs.new_tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG_NAME" \
+            --repo "$REPO" \
+            --title "docx-to-md $TAG_NAME" \
+            --generate-notes
+
+          mapfile -t files < <(find release-assets -maxdepth 1 -type f \
+            \( -name "*-mac-*.zip" \
+            -o -name "*-win-*-installer.exe" \
+            -o -name "*-win-*-portable.exe" \
+            -o -name "*-linux-*.AppImage" \))
+
+          if [ "${#files[@]}" -gt 0 ]; then
+            gh release upload "$TAG_NAME" "${files[@]}" --repo "$REPO" --clobber
+          else
+            echo "No binary assets found; release published without installer files."
+          fi
