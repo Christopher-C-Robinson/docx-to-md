@@ -40,7 +40,7 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
    | Windows (portable)  | `docx2md-<version>-win-x64-portable.exe` |
    | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.zip` |
    | macOS (Intel)         | `docx2md-<version>-mac-x64.zip` |
-   | Linux                 | `docx2md-<version>-linux-x64.AppImage` |
+   | Linux                 | `docx2md-<version>-linux-x86_64.AppImage` |
 
 2. **Windows — installer**: Run the `.exe` setup wizard.  Choose an installation directory, optionally create a Desktop shortcut, and follow the prompts.
 
