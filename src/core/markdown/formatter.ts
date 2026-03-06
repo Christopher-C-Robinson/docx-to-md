@@ -12,7 +12,7 @@ export class MarkdownFormatter {
   }
 
   serialize(root: RootNode): string {
-    return this.normalize(this.serializeChildren(root));
+    return this.normalize(this.serializeChildren(root, ''));
   }
 
   /**
@@ -29,17 +29,17 @@ export class MarkdownFormatter {
       + '\n';
   }
 
-  private serializeChildren(node: Parent, indent = ''): string {
-    return node.children.map(child => this.serializeNode(child, indent)).join('');
+  private serializeChildren(node: Parent, indent = '', isInline = false): string {
+    return node.children.map(child => this.serializeNode(child, indent, isInline)).join('');
   }
 
-  private serializeNode(node: AstNode, indent = ''): string {
+  private serializeNode(node: AstNode, indent = '', isInline = false): string {
     switch (node.type) {
       case 'heading': return this.heading(node as HeadingNode, indent);
-      case 'paragraph': return this.serializeChildren(node as Parent, indent).trim() + '\n\n';
+      case 'paragraph': return this.serializeChildren(node as Parent, indent, true).trim() + '\n\n';
       case 'text': return (node as { value: string }).value;
-      case 'strong': return `**${this.serializeChildren(node as Parent, indent)}**`;
-      case 'emphasis': return `*${this.serializeChildren(node as Parent, indent)}*`;
+      case 'strong': return `**${this.serializeChildren(node as Parent, indent, true)}**`;
+      case 'emphasis': return `*${this.serializeChildren(node as Parent, indent, true)}*`;
       case 'code': {
         const c = node as CodeNode;
         return `\`\`\`${c.lang ?? ''}\n${c.value}\n\`\`\`\n\n`;
@@ -50,12 +50,13 @@ export class MarkdownFormatter {
       case 'table': return this.table(node as TableNode, indent);
       case 'link': {
         const l = node as LinkNode;
-        const txt = this.serializeChildren(l, indent);
+        const txt = this.serializeChildren(l, indent, true);
         return `[${txt}](${l.url}${l.title ? ` "${l.title}"` : ''})`;
       }
       case 'image': {
         const img = node as ImageNode;
-        return `![${img.alt ?? ''}](${img.url}${img.title ? ` "${img.title}"` : ''})`;
+        const imgMd = `![${img.alt ?? ''}](${img.url}${img.title ? ` "${img.title}"` : ''})`;
+        return isInline ? imgMd : imgMd + '\n\n';
       }
       case 'thematicBreak': return '---\n\n';
       case 'html': return (node as { value: string }).value + '\n\n';
@@ -65,7 +66,7 @@ export class MarkdownFormatter {
   }
 
   private heading(node: HeadingNode, indent: string): string {
-    const text = this.serializeChildren(node, indent);
+    const text = this.serializeChildren(node, indent, true);
     return `${'#'.repeat(node.depth)} ${text}\n\n`;
   }
 
@@ -91,7 +92,7 @@ export class MarkdownFormatter {
 
     const rawRows = node.children.map(row =>
       (row as TableRowNode).children.map(cell =>
-        this.serializeChildren(cell as Parent, indent).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
+        this.serializeChildren(cell as Parent, indent, true).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
       )
     );
 
@@ -138,7 +139,7 @@ export class MarkdownFormatter {
           c.colspan && c.colspan > 1 ? `colspan="${c.colspan}"` : '',
           c.rowspan && c.rowspan > 1 ? `rowspan="${c.rowspan}"` : '',
         ].filter(Boolean).join(' ');
-        const content = c.children.map(ch => this.serializeNode(ch)).join('');
+        const content = c.children.map(ch => this.serializeNode(ch, '', true)).join('');
         return `<td${attrs ? ' ' + attrs : ''}>${content}</td>`;
       }).join('');
       return `<tr>${cells}</tr>`;
