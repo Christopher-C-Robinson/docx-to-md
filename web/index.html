@@ -496,6 +496,18 @@
     // Prevent XSS: all user-supplied content goes through these helpers
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+    // Rewrite media-relative image sources in rendered HTML to API URLs for preview rendering.
+    // Handles both `media/file` and `media\file` sources and rewrites only immediate filenames.
+    // The raw Markdown stored in markdownRaw is never modified.
+    function rewriteRenderedImagePaths(html, sid) {
+      if (!sid) return html;
+      const base = '/api/images/' + encodeURIComponent(sid) + '/';
+      return html.replace(
+        /(<img\b[^>]*\bsrc=)(["']?)media[\\/]([^"'\\/\s>]+)\2/gi,
+        (_, prefix, quote, filename) => `${prefix}${quote}${base}${encodeURIComponent(filename)}${quote}`
+      );
+    }
+
     let markdownRaw = '';
     let sessionId = '';
 
@@ -680,9 +692,11 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (sanitised via DOMPurify + marked)
+        // Markdown preview (render markdown -> rewrite image src -> sanitise)
         mdRaw.value = markdownRaw;
-        mdPreview.innerHTML = DOMPurify.sanitize(marked.parse(markdownRaw, { breaks: false, gfm: true }));
+        const renderedMarkdown = marked.parse(markdownRaw, { breaks: false, gfm: true });
+        const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
+        mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
         resultSection.classList.add('visible');
 
         // Images
