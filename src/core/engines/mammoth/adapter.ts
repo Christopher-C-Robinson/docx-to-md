@@ -57,17 +57,38 @@ export class MammothAdapter implements EngineAdapter {
         warnings.push(`Failed to pre-extract DOCX media: ${(err as Error).message}`);
       }
 
+      let imageIndex = 0;
+      // Tracks base64 keys that have already been renamed so that duplicate
+      // appearances of the same image reuse the sequential name.
+      const renamedKeys = new Set<string>();
+
       const imageHandler = mammoth.images.imgElement((image) => {
         return image.read('base64').then((imageBase64) => {
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            return { src: path.relative(path.dirname(outputPath), existing) };
+            if (!renamedKeys.has(imageBase64)) {
+              // First encounter: rename to the next sequential filename.
+              imageIndex++;
+              const ext = path.extname(existing) || `.${image.contentType.split('/')[1] ?? 'png'}`;
+              const newName = `image-${String(imageIndex).padStart(2, '0')}${ext}`;
+              const newPath = path.join(mediaDir, newName);
+              fs.renameSync(existing, newPath);
+              const idx = assets.indexOf(existing);
+              if (idx !== -1) assets[idx] = newPath;
+              renamedKeys.add(imageBase64);
+              contentMap.set(imageBase64, newPath);
+            }
+            // contentMap is guaranteed to have a value for imageBase64 here: it
+            // was either just set above or was set during a previous encounter.
+            const finalPath = contentMap.get(imageBase64) ?? existing;
+            return { src: path.relative(path.dirname(outputPath), finalPath) };
           }
 
           // Fallback: image not found in the DOCX media directory (e.g. an
-          // embedded OLE object).  Write it with a safe generated name.
+          // embedded OLE object).  Write it with a safe sequential name.
+          imageIndex++;
           const ext = image.contentType.split('/')[1] ?? 'png';
-          const filename = `image-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          const filename = `image-${String(imageIndex).padStart(2, '0')}.${ext}`;
           const filepath = path.join(mediaDir, filename);
           fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
           assets.push(filepath);
