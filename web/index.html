@@ -522,6 +522,7 @@
     const batchTitle    = document.getElementById('batch-title');
     const batchConvertBtn = document.getElementById('batch-convert-btn');
     const batchResetBtn   = document.getElementById('batch-reset-btn');
+    const markdownRenderer = new markdownit({ html: true, linkify: true, typographer: false });
 
     function toUserError(err) {
       if (err instanceof Error) {
@@ -681,8 +682,7 @@
 
         // Markdown preview (sanitised via DOMPurify + markdown-it)
         mdRaw.value = markdownRaw;
-        const md = new markdownit({ html: true, linkify: true, typographer: true });
-        mdPreview.innerHTML = DOMPurify.sanitize(md.render(markdownRaw));
+        mdPreview.innerHTML = DOMPurify.sanitize(markdownRenderer.render(markdownRaw));
         resultSection.classList.add('visible');
 
         // Images
