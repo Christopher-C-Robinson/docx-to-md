@@ -21,12 +21,14 @@
 
 The recommended way to use docx-to-md on Windows and macOS is via the native desktop application built with Electron.
 
+> **No terminal required**: If you install from a release package, all setup is point-and-click.
+
 #### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18 or later and npm (required to build from source)
-- [Pandoc](https://pandoc.org/installing.html) — recommended conversion engine (optional; Mammoth is used as fallback)
-  - macOS: `brew install pandoc`
-  - Windows: download the installer from <https://pandoc.org/installing.html>
+- None required for basic app installation.
+- Optional (for best conversion quality): [Pandoc](https://pandoc.org/installing.html)
+  - Windows: download and run the official `.msi` installer from <https://pandoc.org/installing.html>
+  - macOS: download and run the official `.pkg` installer from <https://pandoc.org/installing.html>
 
 #### Option A — Download a pre-built release
 
@@ -46,7 +48,15 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
 4. **macOS**: Open the `.dmg` file, drag **docx2md** to your *Applications* folder, then launch it from Launchpad or Spotlight.
    > **Gatekeeper notice**: macOS may show a warning because the app is not notarized.  Right-click the app, choose **Open**, then click **Open** in the dialog.
 
+5. (Optional) Install Pandoc with the GUI installer from pandoc.org for improved DOCX fidelity. If Pandoc is not installed, docx-to-md automatically falls back to Mammoth.
+
+#### Recommended for product/non-technical users
+
+Use **Option A** only. It is the fully non-terminal installation path.
+
 #### Option B — Build from source
+
+This path is intended for developers.
 
 ```bash
 # 1. Clone the repository
