@@ -49,12 +49,32 @@ describe('MammothAdapter – buildStyleMap', () => {
 
   test('default style map always includes Source Code mapping', async () => {
     const map = await captureStyleMap();
-    expect(map).toContain("p[style-name='Source Code'] => pre[class=language-text]:fresh");
+    expect(map).toContain("p[style-name='Source Code'] => pre[class='language-text']:fresh");
   });
 
   test('default style map always includes Verbatim Char run style mapping', async () => {
     const map = await captureStyleMap();
     expect(map).toContain("r[style-name='Verbatim Char'] => code");
+  });
+
+  test('default style map always includes Title mapping', async () => {
+    const map = await captureStyleMap();
+    expect(map).toContain("p[style-name='Title'] => h1:fresh");
+  });
+
+  test('default style map always includes Subtitle mapping', async () => {
+    const map = await captureStyleMap();
+    expect(map).toContain("p[style-name='Subtitle'] => p:fresh");
+  });
+
+  test('default style map always includes No Spacing mapping', async () => {
+    const map = await captureStyleMap();
+    expect(map).toContain("p[style-name='No Spacing'] => p:fresh");
+  });
+
+  test('default style map always includes Subtle Reference run style mapping', async () => {
+    const map = await captureStyleMap();
+    expect(map).toContain("r[style-name='Subtle Reference'] => em");
   });
 
   test('user-provided paragraph style uses p prefix', async () => {

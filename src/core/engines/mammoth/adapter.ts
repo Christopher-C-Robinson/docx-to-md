@@ -116,8 +116,12 @@ export class MammothAdapter implements EngineAdapter {
     "p[style-name='First Paragraph'] => p:fresh",
     "p[style-name='Body Text'] => p:fresh",
     "p[style-name='Compact'] => p:fresh",
-    "p[style-name='Source Code'] => pre[class=language-text]:fresh",
+    "p[style-name='Source Code'] => pre[class='language-text']:fresh",
     "r[style-name='Verbatim Char'] => code",
+    "p[style-name='Title'] => h1:fresh",
+    "p[style-name='Subtitle'] => p:fresh",
+    "p[style-name='No Spacing'] => p:fresh",
+    "r[style-name='Subtle Reference'] => em",
   ];
 
   private buildStyleMap(options: ConversionOptions): string[] {
