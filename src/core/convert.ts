@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   ConversionOptions,
   ConversionResult,
@@ -7,6 +9,7 @@ import {
   TrackChangesPolicy,
 } from './types';
 import { resolveEngine } from './engines/registry';
+import { inlineImages as inlineImagesTransform } from './assets/inlineImages';
 
 export interface ConvertDocxOptions {
   inputPath: string;
@@ -18,6 +21,8 @@ export interface ConvertDocxOptions {
   luaFilters?: string[];
   timeout?: number;
   styleMap?: StyleMapping[];
+  /** When true, replace image references with inline Base64 data URIs. */
+  inlineImages?: boolean;
 }
 
 export interface ConvertDocxResult extends ConversionResult {
@@ -25,10 +30,13 @@ export interface ConvertDocxResult extends ConversionResult {
 }
 
 export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocxResult> {
+  const resolvedOutputDir = path.dirname(opts.outputPath);
+  const effectiveMediaDir = opts.mediaDir ?? (opts.inlineImages ? path.join(resolvedOutputDir, 'media') : undefined);
+
   const options: ConversionOptions = {
     engine: opts.engine,
     format: opts.format ?? 'gfm',
-    mediaDir: opts.mediaDir,
+    mediaDir: effectiveMediaDir,
     trackChanges: opts.trackChanges,
     luaFilters: opts.luaFilters,
     timeout: opts.timeout,
@@ -38,5 +46,12 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
   const engine = await resolveEngine(options.engine);
   options.engine = engine.name;
   const result = await engine.convert(opts.inputPath, opts.outputPath, options);
+
+  if (opts.inlineImages) {
+    const inlinedMarkdown = inlineImagesTransform(result.markdown, resolvedOutputDir);
+    fs.writeFileSync(opts.outputPath, inlinedMarkdown, 'utf8');
+    return { ...result, markdown: inlinedMarkdown, engineName: engine.name };
+  }
+
   return { ...result, engineName: engine.name };
 }

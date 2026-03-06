@@ -9,6 +9,7 @@ import * as path from 'path';
 const mockExistsSync = jest.fn();
 const mockMkdirSync = jest.fn();
 const mockReaddirSync = jest.fn();
+const mockWriteFileSync = jest.fn();
 const mockCpus = jest.fn();
 
 jest.mock('os', () => ({
@@ -19,6 +20,7 @@ jest.mock('fs', () => ({
   existsSync: (...args: unknown[]) => mockExistsSync(...args),
   mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
   readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
+  writeFileSync: (...args: unknown[]) => mockWriteFileSync(...args),
 }));
 
 const mockConvert = jest.fn();
@@ -167,6 +169,35 @@ describe('batch command', () => {
 
     expect(mockConvert).toHaveBeenCalledTimes(fileCount);
     expect(maxConcurrent).toBeLessThanOrEqual(jobs);
+  });
+
+
+  test('sets a default per-file mediaDir when inlineImages is enabled', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReaddirSync.mockReturnValue([dirent('doc1.docx', false)]);
+    mockResolveEngine.mockResolvedValue(makeEngine());
+
+    await batchCommand(inputDir, { inlineImages: true, jobs: '1' });
+
+    expect(mockConvert).toHaveBeenCalledWith(
+      path.join(path.resolve(inputDir), 'doc1.docx'),
+      path.join(path.resolve(inputDir), 'doc1.md'),
+      expect.objectContaining({ mediaDir: path.join(path.resolve(inputDir), 'media') })
+    );
+  });
+
+  test('uses shared mediaDir when provided with inlineImages', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReaddirSync.mockReturnValue([dirent('doc1.docx', false)]);
+    mockResolveEngine.mockResolvedValue(makeEngine());
+
+    await batchCommand(inputDir, { inlineImages: true, mediaDir: '/custom/media', jobs: '1' });
+
+    expect(mockConvert).toHaveBeenCalledWith(
+      path.join(path.resolve(inputDir), 'doc1.docx'),
+      path.join(path.resolve(inputDir), 'doc1.md'),
+      expect.objectContaining({ mediaDir: path.normalize('/custom/media') })
+    );
   });
 
   test('exits with code 1 when one or more files fail to convert', async () => {

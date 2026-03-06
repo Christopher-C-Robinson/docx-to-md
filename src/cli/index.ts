@@ -20,6 +20,7 @@ program
   .option('--track-changes <policy>', 'Tracked changes policy (accept|reject|all)')
   .option('--lua-filter <path>', 'Pandoc Lua filter (can be repeated)', (v: string, a: string[]) => [...a, v], [] as string[])
   .option('--timeout <ms>', 'Engine timeout in milliseconds')
+  .option('--inline-images', 'Embed images as Base64 data URIs (produces a single self-contained Markdown file)')
   .action(convertCommand);
 
 program
@@ -32,6 +33,7 @@ program
   .option('--track-changes <policy>', 'Tracked changes policy (accept|reject|all)')
   .option('--jobs <n>', 'Number of parallel jobs (default: number of CPU cores)')
   .option('--timeout <ms>', 'Per-file timeout in milliseconds')
+  .option('--inline-images', 'Embed images as Base64 data URIs (produces self-contained Markdown files)')
   .action(batchCommand);
 
 program.parse(process.argv);
