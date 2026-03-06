@@ -106,18 +106,18 @@ export class MammothAdapter implements EngineAdapter {
     return { markdown: finalMd, assets, warnings, metadata };
   }
 
-  /**
-   * Remove or normalize Word-generated accessibility alt text from images.
-   * Microsoft Word automatically inserts descriptions like "A screenshot of a
-   * computer" or "AI-generated content may be incorrect." which are not
-   * meaningful in documentation.
-   */
   /** Phrases that identify Word-generated auto-accessibility alt text. */
   private static readonly WORD_GENERATED_ALT_PATTERNS: readonly string[] = [
     'a screenshot of a computer',
     'ai-generated content may be incorrect',
   ];
 
+  /**
+   * Remove or normalize Word-generated accessibility alt text from images.
+   * Microsoft Word automatically inserts descriptions like "A screenshot of a
+   * computer" or "AI-generated content may be incorrect." which are not
+   * meaningful in documentation.
+   */
   static cleanAltText(text: string): string {
     if (!text) return '';
     const lower = text.toLowerCase();
