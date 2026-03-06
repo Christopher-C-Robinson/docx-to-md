@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
 import { resolveEngine } from '../../core/engines/registry';
+import { inlineImages as inlineImagesTransform } from '../../core/assets/inlineImages';
 
 interface BatchCommandOptions {
   out?: string;
@@ -12,6 +13,7 @@ interface BatchCommandOptions {
   trackChanges?: string;
   jobs?: string;
   timeout?: string;
+  inlineImages?: boolean;
 }
 
 export async function batchCommand(
@@ -79,6 +81,10 @@ export async function batchCommand(
       const result = await engine.convert(file, outPath, options);
       for (const w of result.warnings) {
         console.error(`[${rel}] Warning: ${w}`);
+      }
+      if (opts.inlineImages) {
+        const inlinedMarkdown = inlineImagesTransform(result.markdown, path.dirname(outPath));
+        fs.writeFileSync(outPath, inlinedMarkdown, 'utf8');
       }
       console.log(`✓ ${rel} → ${path.relative(process.cwd(), outPath)}`);
       succeeded++;

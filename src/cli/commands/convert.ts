@@ -11,6 +11,7 @@ interface ConvertCommandOptions {
   trackChanges?: string;
   luaFilter?: string[];
   timeout?: string;
+  inlineImages?: boolean;
 }
 
 export async function convertCommand(
@@ -40,6 +41,7 @@ export async function convertCommand(
       trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
       luaFilters: opts.luaFilter,
       timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
+      inlineImages: opts.inlineImages,
     });
 
     console.error(`Using engine: ${result.engineName}`);

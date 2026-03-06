@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   ConversionOptions,
   ConversionResult,
@@ -7,6 +9,7 @@ import {
   TrackChangesPolicy,
 } from './types';
 import { resolveEngine } from './engines/registry';
+import { inlineImages as inlineImagesTransform } from './assets/inlineImages';
 
 export interface ConvertDocxOptions {
   inputPath: string;
@@ -18,6 +21,8 @@ export interface ConvertDocxOptions {
   luaFilters?: string[];
   timeout?: number;
   styleMap?: StyleMapping[];
+  /** When true, replace image references with inline Base64 data URIs. */
+  inlineImages?: boolean;
 }
 
 export interface ConvertDocxResult extends ConversionResult {
@@ -38,5 +43,13 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
   const engine = await resolveEngine(options.engine);
   options.engine = engine.name;
   const result = await engine.convert(opts.inputPath, opts.outputPath, options);
+
+  if (opts.inlineImages) {
+    const outputDir = path.dirname(opts.outputPath);
+    const inlinedMarkdown = inlineImagesTransform(result.markdown, outputDir);
+    fs.writeFileSync(opts.outputPath, inlinedMarkdown, 'utf8');
+    return { ...result, markdown: inlinedMarkdown, engineName: engine.name };
+  }
+
   return { ...result, engineName: engine.name };
 }

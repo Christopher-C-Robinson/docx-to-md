@@ -3,6 +3,7 @@ export * from './ast/types';
 export * from './markdown/formatter';
 export * from './assets/manager';
 export * from './assets/extractMedia';
+export * from './assets/inlineImages';
 export * from './metadata/extractor';
 export * from './engines/interface';
 export { getEngine, resolveEngine } from './engines/registry';
