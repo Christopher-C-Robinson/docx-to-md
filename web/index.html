@@ -496,6 +496,18 @@
     // Prevent XSS: all user-supplied content goes through these helpers
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+    // Rewrite media-relative image sources in rendered HTML to API URLs for preview rendering.
+    // Handles both `media/file` and `media\file` sources and rewrites only immediate filenames.
+    // The raw Markdown stored in markdownRaw is never modified.
+    function rewriteRenderedImagePaths(html, sid) {
+      if (!sid) return html;
+      const base = '/api/images/' + encodeURIComponent(sid) + '/';
+      return html.replace(
+        /(<img\b[^>]*\bsrc=)(["']?)media[\\/]([^"'\\/\s>]+)\2/gi,
+        (_, prefix, quote, filename) => `${prefix}${quote}${base}${encodeURIComponent(filename)}${quote}`
+      );
+    }
+
     let markdownRaw = '';
     let sessionId = '';
 
@@ -634,7 +646,8 @@
         copyMdBtn.textContent = '✓ Copied!';
         setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       } catch {
-        copyMdBtn.textContent = 'Copy failed';
+        copyMdBtn.textContent = '✗ Copy failed';
+        setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       }
     });
 
@@ -680,9 +693,11 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (sanitised via DOMPurify + markdown-it)
+        // Markdown preview (render markdown -> rewrite image src -> sanitise)
         mdRaw.value = markdownRaw;
-        mdPreview.innerHTML = DOMPurify.sanitize(markdownRenderer.render(markdownRaw));
+        const renderedMarkdown = markdownRenderer.render(markdownRaw);
+        const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
+        mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
         resultSection.classList.add('visible');
 
         // Images
