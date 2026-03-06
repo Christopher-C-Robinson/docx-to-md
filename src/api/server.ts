@@ -84,6 +84,50 @@ function resolveSessionPath(sessionDir: string, filename: string): string {
   return resolved;
 }
 
+/** Validate that a stored session path is anchored under the session root directory. */
+function resolveStoredSessionPath(sessionDir: string, storedPath: string): string {
+  const resolvedSessionDir = path.resolve(sessionDir);
+  const resolvedStoredPath = path.resolve(storedPath);
+  const sessionDirWithSep = resolvedSessionDir.endsWith(path.sep)
+    ? resolvedSessionDir
+    : resolvedSessionDir + path.sep;
+  if (!resolvedStoredPath.startsWith(sessionDirWithSep)) {
+    throw new Error('Invalid session path');
+  }
+  return resolvedStoredPath;
+}
+
+function hasFilesInDirectory(dirPath: string): boolean {
+  if (!fs.existsSync(dirPath)) {
+    return false;
+  }
+  return fs.readdirSync(dirPath).length > 0;
+}
+
+function pipeZipArchive(
+  res: Response,
+  filename: string,
+  buildArchive: (archive: archiver.Archiver) => void
+): void {
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  archive.on('error', (err) => {
+    if (res.headersSent || res.writableEnded) {
+      res.destroy(err);
+      return;
+    }
+    res.status(500).json({ error: 'Failed to create archive.' });
+  });
+
+  archive.pipe(res);
+  buildArchive(archive);
+  archive.finalize().catch(() => {
+    // best effort
+  });
+}
+
 const appStorage = multer.diskStorage({
   destination(_req, _file, cb) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-upload-'));
@@ -388,11 +432,18 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!fs.existsSync(session.markdownPath)) {
+    let markdownPath: string;
+    try {
+      markdownPath = resolveStoredSessionPath(session.tempRootDir, session.markdownPath);
+    } catch {
+      res.status(400).json({ error: 'Invalid session data' });
+      return;
+    }
+    if (!fs.existsSync(markdownPath)) {
       res.status(404).json({ error: 'Markdown file not found' });
       return;
     }
-    res.download(session.markdownPath, 'converted.md');
+    res.download(markdownPath, 'converted.md');
   });
 
   app.get('/api/download/images/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
@@ -402,26 +453,49 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!fs.existsSync(session.mediaDir)) {
+    let mediaDir: string;
+    try {
+      mediaDir = resolveStoredSessionPath(session.tempRootDir, session.mediaDir);
+    } catch {
+      res.status(400).json({ error: 'Invalid session data' });
+      return;
+    }
+    if (!fs.existsSync(mediaDir)) {
       res.status(404).json({ error: 'No images found for this session' });
       return;
     }
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="images.zip"');
-
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    archive.on('error', (err) => {
-      if (res.headersSent || res.writableEnded) {
-        res.destroy(err);
-        return;
-      }
-      res.status(500).json({ error: 'Failed to archive images.' });
+    pipeZipArchive(res, 'images.zip', (archive) => {
+      archive.directory(mediaDir, false);
     });
-    archive.pipe(res);
-    archive.directory(session.mediaDir, false);
-    archive.finalize().catch(() => {
-      // best effort
+  });
+
+  app.get('/api/download/zip/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
+    const sessionId = String(req.params['sessionId']);
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+    let markdownPath: string;
+    let mediaDir: string;
+    try {
+      markdownPath = resolveStoredSessionPath(session.tempRootDir, session.markdownPath);
+      mediaDir = resolveStoredSessionPath(session.tempRootDir, session.mediaDir);
+    } catch {
+      res.status(400).json({ error: 'Invalid session data' });
+      return;
+    }
+    if (!fs.existsSync(markdownPath)) {
+      res.status(404).json({ error: 'Conversion output not found' });
+      return;
+    }
+
+    pipeZipArchive(res, 'document.zip', (archive) => {
+      archive.file(markdownPath, { name: 'document.md' });
+      if (hasFilesInDirectory(mediaDir)) {
+        archive.directory(mediaDir, 'media');
+      }
     });
   });
 

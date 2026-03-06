@@ -456,6 +456,7 @@
       <div class="toolbar">
         <h3>Markdown</h3>
         <button class="btn-primary" id="dl-md-btn">⬇ Download .md</button>
+        <button class="btn-primary" id="dl-zip-btn">⬇ Download .zip</button>
         <button class="btn-secondary" id="copy-md-btn">📋 Copy</button>
       </div>
       <div class="tab-bar" role="tablist">
@@ -525,6 +526,7 @@
     const imgGrid       = document.getElementById('img-grid');
     const resetBtn      = document.getElementById('reset-btn');
     const dlMdBtn       = document.getElementById('dl-md-btn');
+    const dlZipBtn      = document.getElementById('dl-zip-btn');
     const dlImgsBtn     = document.getElementById('dl-imgs-btn');
     const copyMdBtn     = document.getElementById('copy-md-btn');
     const tabPreview    = document.getElementById('tab-preview');
@@ -657,6 +659,12 @@
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
     });
 
+    // ── Download zip (markdown + media) ───────────────────────────────────
+    dlZipBtn.addEventListener('click', () => {
+      if (!sessionId) return;
+      window.location.href = `/api/download/zip/${encodeURIComponent(sessionId)}`;
+    });
+
     // ── Download images ────────────────────────────────────────────────────
     dlImgsBtn.addEventListener('click', () => {
       if (!sessionId) return;
@@ -746,6 +754,7 @@
       const actions = item.status === 'done'
         ? `<div class="batch-actions">
              <button class="btn-primary" data-batch-action="md" data-batch-index="${i}">⬇ .md</button>
+             <button class="btn-primary" data-batch-action="zip" data-batch-index="${i}">⬇ .zip</button>
              ${item.hasImages ? `<button class="btn-secondary" data-batch-action="imgs" data-batch-index="${i}">⬇ images</button>` : ''}
            </div>`
         : (item.status === 'error'
@@ -779,6 +788,8 @@
       if (!item?.sessionId) return;
       if (action === 'md') {
         window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
+      } else if (action === 'zip') {
+        window.location.href = `/api/download/zip/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'imgs') {
         window.location.href = `/api/download/images/${encodeURIComponent(item.sessionId)}`;
       }
