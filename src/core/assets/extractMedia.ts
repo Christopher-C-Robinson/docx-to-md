@@ -23,6 +23,11 @@ interface CentralDirEntry {
   compressionMethod: number;
 }
 
+function isSupportedDocxFilename(filename: string): boolean {
+  // Accept Multer temp filenames (no extension) and regular .docx names.
+  return /^[a-z0-9][a-z0-9._() ~-]*$/i.test(filename);
+}
+
 function resolveDocxInputPath(docxPath: string): string {
   const raw = String(docxPath).trim();
   if (!raw || raw.includes('\0')) {
@@ -40,14 +45,13 @@ function resolveDocxInputPath(docxPath: string): string {
 
   const resolved = path.resolve(normalized);
   const filename = path.basename(resolved);
-  // Accept standard filename characters while enforcing a .docx extension.
-  if (!/^[a-z0-9][a-z0-9._() -]*\.docx$/i.test(filename)) {
+  if (!isSupportedDocxFilename(filename)) {
     throw new Error(`Unsupported DOCX filename: "${filename}"`);
   }
 
   const realPath = fs.realpathSync(resolved);
   const realFilename = path.basename(realPath);
-  if (!/^[a-z0-9][a-z0-9._() -]*\.docx$/i.test(realFilename)) {
+  if (!isSupportedDocxFilename(realFilename)) {
     throw new Error(`Unsupported DOCX filename: "${realFilename}"`);
   }
 

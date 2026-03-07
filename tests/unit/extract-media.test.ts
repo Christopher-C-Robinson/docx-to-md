@@ -136,6 +136,20 @@ describe('extractMedia', () => {
     expect(fs.readFileSync(result.assets[0])).toEqual(PNG_MAGIC);
   });
 
+  test('accepts extensionless temp DOCX filenames', () => {
+    const extensionlessDocx = path.join(tmpDir, 'uploadtmp');
+    const zip = buildZip([
+      { name: 'word/media/image1.png', data: PNG_MAGIC },
+    ]);
+    fs.writeFileSync(extensionlessDocx, zip);
+
+    const result = extractMedia(extensionlessDocx, mediaDir);
+
+    expect(result.warnings).toHaveLength(0);
+    expect(result.assets).toHaveLength(1);
+    expect(path.basename(result.assets[0])).toBe('image1.png');
+  });
+
   test('extracts multiple media files', () => {
     const zip = buildZip([
       { name: 'word/media/image1.png', data: PNG_MAGIC },

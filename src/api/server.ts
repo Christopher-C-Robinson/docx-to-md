@@ -370,6 +370,28 @@ export function createApp(): express.Application {
       const sessionId = createSessionId();
       const { sessionDir, markdownPath, mediaDir } = sessionPaths(sessionId);
       const inputPath = req.file.path;
+      const inputDir = req.file.destination;
+
+      const cleanupUpload = (): void => {
+        try {
+          const resolvedInputPath = path.resolve(inputPath);
+          if (isPathWithinDirectory(os.tmpdir(), resolvedInputPath)) {
+            fs.rmSync(resolvedInputPath, { force: true });
+          }
+        } catch {
+          // best effort
+        }
+        try {
+          if (typeof inputDir === 'string') {
+            const resolvedInputDir = path.resolve(inputDir);
+            if (isPathWithinDirectory(os.tmpdir(), resolvedInputDir)) {
+              fs.rmSync(resolvedInputDir, { recursive: true, force: true });
+            }
+          }
+        } catch {
+          // best effort
+        }
+      };
 
       try {
         fs.mkdirSync(sessionDir, { recursive: true });
@@ -411,6 +433,8 @@ export function createApp(): express.Application {
           error: 'Conversion failed due to an internal error. Please try again later.',
           errorId,
         });
+      } finally {
+        cleanupUpload();
       }
     }
   );

@@ -42,7 +42,6 @@ export class MammothAdapter implements EngineAdapter {
 
     if (options.mediaDir) {
       const mediaDir = this.resolveMediaDirectory(options.mediaDir);
-      const normalizedMediaDir = mediaDir;
       let contentMap = new Map<string, string>();
 
       // Extract all media from the DOCX archive up-front so that images get
@@ -66,41 +65,55 @@ export class MammothAdapter implements EngineAdapter {
 
       const imageHandler = mammoth.images.imgElement((image) => {
         return image.read('base64').then((imageBase64) => {
+          if (assignedKeys.has(imageBase64)) {
+            const assignedPath = contentMap.get(imageBase64);
+            if (assignedPath) {
+              return { src: path.relative(path.dirname(outputPath), assignedPath) };
+            }
+          }
+
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            const existingFilename = this.resolveExistingMediaFilename(existing);
-            if (!existingFilename) {
+            const safeExistingPath = this.resolveExistingMediaPath(mediaDir, existing);
+            if (!safeExistingPath) {
               warnings.push(`Skipped unsafe media path from content map: ${existing}`);
             } else {
-              if (!assignedKeys.has(imageBase64)) {
-                // First encounter: write to the next sequential filename while
-                // preserving document order and avoiding collisions.
-                const ext = this.resolveImageExtension(existingFilename, image.contentType);
-                const newPath = this.nextAvailableImagePath(
-                  mediaDir,
-                  ext,
-                  () => ++imageIndex,
-                  existingFilename,
-                );
+              const existingFilename = path.basename(safeExistingPath);
+              // First encounter: move to the next sequential filename while
+              // preserving document order and avoiding collisions.
+              const ext = this.resolveImageExtension(existingFilename, image.contentType);
+              const newPath = this.nextAvailableImagePath(
+                mediaDir,
+                ext,
+                () => ++imageIndex,
+                existingFilename,
+              );
 
-                if (existingFilename !== path.basename(newPath)) {
+              if (safeExistingPath !== newPath) {
+                if (fs.existsSync(safeExistingPath)) {
+                  fs.renameSync(safeExistingPath, newPath);
+                } else {
+                  // If the expected extracted file is missing, recreate it
+                  // directly from Mammoth's payload to keep output intact.
                   fs.writeFileSync(newPath, Buffer.from(imageBase64, 'base64'));
                 }
+              }
 
-                const idx = assets.indexOf(existing);
-                if (idx !== -1) {
-                  assets[idx] = newPath;
+              const idx = assets.indexOf(existing);
+              if (idx !== -1) {
+                assets[idx] = newPath;
+              } else {
+                const safeIdx = assets.indexOf(safeExistingPath);
+                if (safeIdx !== -1) {
+                  assets[safeIdx] = newPath;
                 } else if (!assets.includes(newPath)) {
                   assets.push(newPath);
                 }
-
-                assignedKeys.add(imageBase64);
-                contentMap.set(imageBase64, newPath);
               }
-              // contentMap is guaranteed to have a value for imageBase64 here: it
-              // was either just set above or was set during a previous encounter.
-              const finalPath = contentMap.get(imageBase64) ?? path.join(normalizedMediaDir, existingFilename);
-              return { src: path.relative(path.dirname(outputPath), finalPath) };
+
+              assignedKeys.add(imageBase64);
+              contentMap.set(imageBase64, newPath);
+              return { src: path.relative(path.dirname(outputPath), newPath) };
             }
           }
 
@@ -109,7 +122,11 @@ export class MammothAdapter implements EngineAdapter {
           const ext = this.resolveImageExtension('', image.contentType);
           const filepath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
           fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
-          assets.push(filepath);
+          if (!assets.includes(filepath)) {
+            assets.push(filepath);
+          }
+          assignedKeys.add(imageBase64);
+          contentMap.set(imageBase64, filepath);
           return { src: path.relative(path.dirname(outputPath), filepath) };
         });
       });
@@ -294,6 +311,18 @@ export class MammothAdapter implements EngineAdapter {
       return null;
     }
     return filename;
+  }
+
+  private resolveExistingMediaPath(mediaDir: string, existingPath: string): string | null {
+    const filename = this.resolveExistingMediaFilename(existingPath);
+    if (!filename) {
+      return null;
+    }
+    const candidate = path.resolve(mediaDir, filename);
+    if (!this.isPathWithinDirectory(mediaDir, candidate)) {
+      return null;
+    }
+    return candidate;
   }
 
   /**

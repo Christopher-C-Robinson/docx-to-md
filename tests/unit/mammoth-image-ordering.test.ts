@@ -64,7 +64,11 @@ describe('MammothAdapter – deterministic image ordering', () => {
     adapter = new MammothAdapter();
     jest.clearAllMocks();
     const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    (existsSync as jest.Mock).mockImplementation(() => false);
+    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) => {
+      const basename = path.basename(String(candidate));
+      // Pre-extracted sources exist by default; sequential targets do not.
+      return !/^image-\d{2}\./i.test(basename);
+    });
   });
 
   function imageWriteCalls() {
@@ -74,6 +78,17 @@ describe('MammothAdapter – deterministic image ordering', () => {
         typeof target === 'string' &&
         target.startsWith(`${resolvedMediaDir}${path.sep}`) &&
         Buffer.isBuffer(data),
+    );
+  }
+
+  function imageRenameCalls() {
+    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    return (renameSync as jest.Mock).mock.calls.filter(
+      ([from, to]) =>
+        typeof from === 'string' &&
+        typeof to === 'string' &&
+        from.startsWith(`${resolvedMediaDir}${path.sep}`) &&
+        to.startsWith(`${resolvedMediaDir}${path.sep}`),
     );
   }
 
@@ -102,7 +117,7 @@ describe('MammothAdapter – deterministic image ordering', () => {
     return adapter.convert('/fake/input.docx', outputPath, { format: 'gfm', mediaDir });
   }
 
-  test('writes three images to sequential filenames in document flow order', async () => {
+  test('renames three images to sequential filenames in document flow order', async () => {
     const origPaths: Record<string, string> = {
       aaa: path.join(resolvedMediaDir, 'image5.png'),
       bbb: path.join(resolvedMediaDir, 'image1.png'),
@@ -115,10 +130,19 @@ describe('MammothAdapter – deterministic image ordering', () => {
       { base64: 'ccc' },
     ]);
 
-    const calls = imageWriteCalls();
-    expect(calls[0]).toEqual([path.join(resolvedMediaDir, 'image-01.png'), expect.any(Buffer)]);
-    expect(calls[1]).toEqual([path.join(resolvedMediaDir, 'image-02.png'), expect.any(Buffer)]);
-    expect(calls[2]).toEqual([path.join(resolvedMediaDir, 'image-03.png'), expect.any(Buffer)]);
+    const calls = imageRenameCalls();
+    expect(calls[0]).toEqual([
+      path.join(resolvedMediaDir, 'image5.png'),
+      path.join(resolvedMediaDir, 'image-01.png'),
+    ]);
+    expect(calls[1]).toEqual([
+      path.join(resolvedMediaDir, 'image1.png'),
+      path.join(resolvedMediaDir, 'image-02.png'),
+    ]);
+    expect(calls[2]).toEqual([
+      path.join(resolvedMediaDir, 'image9.png'),
+      path.join(resolvedMediaDir, 'image-03.png'),
+    ]);
   });
 
   test('assets list reflects renamed paths, not original archive names', async () => {
@@ -147,11 +171,11 @@ describe('MammothAdapter – deterministic image ordering', () => {
     await runWithImages(origPaths, [
       { base64: 'aaa' }, // first occurrence  → image-01.png
       { base64: 'bbb' }, // first occurrence  → image-02.png
-      { base64: 'aaa' }, // duplicate         → should still be image-01.png (no new write)
+      { base64: 'aaa' }, // duplicate         → should still be image-01.png (no new rename)
     ]);
 
-    // image writes should only happen once per unique image
-    expect(imageWriteCalls()).toHaveLength(2);
+    // image renames should only happen once per unique image
+    expect(imageRenameCalls()).toHaveLength(2);
   });
 
   test('preserves file extension from the extracted filename', async () => {
@@ -161,26 +185,32 @@ describe('MammothAdapter – deterministic image ordering', () => {
 
     await runWithImages(origPaths, [{ base64: 'jpg1', contentType: 'image/jpeg' }]);
 
-    expect(imageWriteCalls()).toContainEqual([
+    expect(imageRenameCalls()).toContainEqual([
+      path.join(resolvedMediaDir, 'photo.jpg'),
       path.join(resolvedMediaDir, 'image-01.jpg'),
-      expect.any(Buffer),
     ]);
   });
 
 
-  test('skips write when source path already matches sequential destination', async () => {
+  test('skips rename when source path already matches sequential destination', async () => {
     const origPaths: Record<string, string> = {
       aaa: path.join(resolvedMediaDir, 'image-01.png'),
     };
 
     const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) =>
-      String(candidate) === path.join(resolvedMediaDir, 'image-01.png'),
-    );
+    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) => {
+      const full = String(candidate);
+      if (full === path.join(resolvedMediaDir, 'image-01.png')) {
+        return true;
+      }
+      const basename = path.basename(full);
+      return !/^image-\d{2}\./i.test(basename);
+    });
 
     const result = await runWithImages(origPaths, [{ base64: 'aaa' }]);
 
     expect(imageWriteCalls()).toHaveLength(0);
+    expect(imageRenameCalls()).toHaveLength(0);
     expect(result.assets).toContain(path.join(resolvedMediaDir, 'image-01.png'));
   });
 
@@ -191,15 +221,26 @@ describe('MammothAdapter – deterministic image ordering', () => {
     };
 
     const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) =>
-      String(candidate) === path.join(resolvedMediaDir, 'image-01.png'),
-    );
+    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) => {
+      const full = String(candidate);
+      if (full === path.join(resolvedMediaDir, 'image-01.png')) {
+        return true;
+      }
+      const basename = path.basename(full);
+      return !/^image-\d{2}\./i.test(basename);
+    });
 
     await runWithImages(origPaths, [{ base64: 'aaa' }, { base64: 'bbb' }]);
 
-    const calls = imageWriteCalls();
-    expect(calls[0]).toEqual([path.join(resolvedMediaDir, 'image-02.png'), expect.any(Buffer)]);
-    expect(calls[1]).toEqual([path.join(resolvedMediaDir, 'image-03.png'), expect.any(Buffer)]);
+    const calls = imageRenameCalls();
+    expect(calls[0]).toEqual([
+      path.join(resolvedMediaDir, 'image5.png'),
+      path.join(resolvedMediaDir, 'image-02.png'),
+    ]);
+    expect(calls[1]).toEqual([
+      path.join(resolvedMediaDir, 'image6.png'),
+      path.join(resolvedMediaDir, 'image-03.png'),
+    ]);
   });
 
 
@@ -246,5 +287,20 @@ describe('MammothAdapter – deterministic image ordering', () => {
     );
     expect(result.assets).toContain(path.join(resolvedMediaDir, 'image-01.png'));
     expect(result.assets).toContain(path.join(resolvedMediaDir, 'image-02.jpeg'));
+  });
+
+  test('duplicate fallback image reuses first sequential filename', async () => {
+    mockExtractMedia.mockReturnValue({ assets: [], warnings: [], contentMap: new Map() });
+
+    const { getCaptured } = setupImgElementMock();
+    setupConvertToHtmlMock(
+      [{ base64: 'ole1', contentType: 'image/png' }, { base64: 'ole1', contentType: 'image/png' }],
+      getCaptured,
+    );
+
+    const result = await adapter.convert('/fake/input.docx', outputPath, { format: 'gfm', mediaDir });
+
+    expect(imageWriteCalls()).toHaveLength(1);
+    expect(result.assets).toContain(path.join(resolvedMediaDir, 'image-01.png'));
   });
 });
