@@ -9,6 +9,8 @@
 #                   falls back to ~/.local/bin if not writable without sudo)
 #   APP_DIR       — macOS only: directory for the .app bundle
 #                   (default: ~/Applications, or /Applications if writable)
+#   DOCX2MD_TRUST_APP — macOS only: set to "yes" to remove quarantine from the
+#                   installed .app bundle
 
 set -euo pipefail
 
@@ -83,14 +85,20 @@ FILENAME="$(basename "$DOWNLOAD_URL")"
 
 # ── Resolve install directories ───────────────────────────────────────────────
 if [ "$OS" = "Darwin" ]; then
-  # Prefer user-local ~/Applications (no sudo needed); fall back to /Applications
+  # Prefer user-local ~/Applications (no sudo needed); only fall back to
+  # /Applications when writable or running as root.
   if [ -n "${APP_DIR:-}" ]; then
     APPS_DIR="$APP_DIR"
   elif [ -d "$HOME/Applications" ] || mkdir -p "$HOME/Applications" 2>/dev/null; then
     APPS_DIR="$HOME/Applications"
-  else
+  elif [ -w "/Applications" ] || [ "$(id -u)" -eq 0 ]; then
     APPS_DIR="/Applications"
+  else
+    error "Could not create '$HOME/Applications' and '/Applications' is not writable without sudo. Create '$HOME/Applications' or set APP_DIR to a writable directory and rerun the installer."
   fi
+
+  mkdir -p "$APPS_DIR" 2>/dev/null || error "Failed to create app destination directory: $APPS_DIR"
+  [ -w "$APPS_DIR" ] || error "App destination is not writable: $APPS_DIR"
 fi
 
 # Binary / wrapper destination
@@ -98,6 +106,8 @@ fi
 # passwordless sudo to /usr/local/bin > user-local ~/.local/bin (no sudo).
 if [ -n "${INSTALL_DIR:-}" ]; then
   BIN_DIR="$INSTALL_DIR"
+  mkdir -p "$BIN_DIR" 2>/dev/null || error "Failed to create INSTALL_DIR: $BIN_DIR"
+  [ -w "$BIN_DIR" ] || error "INSTALL_DIR is not writable: $BIN_DIR"
 elif [ -w "/usr/local/bin" ]; then
   BIN_DIR="/usr/local/bin"
 elif sudo -n true 2>/dev/null; then
@@ -141,7 +151,7 @@ case "$OS" in
     info "Extracting application bundle..."
     unzip -q "$TMP_FILE" -d "$TMP_DIR/extracted"
 
-    APP_BUNDLE="$(find "$TMP_DIR/extracted" -maxdepth 2 -name "*.app" | head -1)"
+    APP_BUNDLE="$(find "$TMP_DIR/extracted" -type d -name "*.app" -print -quit)"
     [ -n "$APP_BUNDLE" ] || error "No .app bundle found in the downloaded archive."
     APP_BUNDLE_NAME="$(basename "$APP_BUNDLE")"
     DEST_APP="$APPS_DIR/$APP_BUNDLE_NAME"
@@ -150,12 +160,17 @@ case "$OS" in
     [ -d "$DEST_APP" ] && rm -rf "$DEST_APP"
     cp -r "$APP_BUNDLE" "$DEST_APP"
 
-    # Remove the Gatekeeper quarantine attribute so the app opens without warning.
-    # This is safe for software you have intentionally chosen to install.
-    xattr -rd com.apple.quarantine "$DEST_APP" 2>/dev/null || true
+    # Preserve Gatekeeper protections by default; advanced users can opt in.
+    if [ "${DOCX2MD_TRUST_APP:-}" = "yes" ]; then
+      info "Removing macOS quarantine flag from $APP_BUNDLE_NAME (DOCX2MD_TRUST_APP=yes)."
+      xattr -rd com.apple.quarantine "$DEST_APP" 2>/dev/null || true
+    else
+      warn "Keeping macOS quarantine flag so Gatekeeper can run normal checks on first launch."
+      warn "Set DOCX2MD_TRUST_APP=yes if you explicitly want to remove quarantine."
+    fi
 
     # Create a thin CLI launcher so `docx2md` is available from the terminal.
-    MACOS_EXE="$(find "$DEST_APP/Contents/MacOS" -maxdepth 1 -type f | head -1)"
+    MACOS_EXE="$(find "$DEST_APP/Contents/MacOS" -type f -print -quit 2>/dev/null || true)"
     if [ -n "$MACOS_EXE" ]; then
       WRAPPER="$TMP_DIR/docx2md-wrapper"
       cat > "$WRAPPER" <<EOF

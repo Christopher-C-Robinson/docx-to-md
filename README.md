@@ -30,9 +30,9 @@ curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/m
 
 What the script does:
 
-- Detects your OS and CPU architecture (macOS arm64/x64, Linux x86_64)
+- Detects your OS and CPU architecture (macOS arm64/x64, Linux x64)
 - Downloads the latest pre-built release from GitHub
-- **macOS**: extracts the `.app` bundle to `~/Applications/` and removes the Gatekeeper quarantine flag — no "unidentified developer" dialog
+- **macOS**: extracts the `.app` bundle to `~/Applications/` (or a writable fallback), preserving Gatekeeper checks by default
 - **Linux**: copies the `.AppImage` to `~/.local/bin/` (or `/usr/local/bin/` if writable) and makes it executable
 - Creates a `docx2md` terminal launcher
 
@@ -40,10 +40,13 @@ Override the install directories:
 
 ```bash
 # Install binary to a custom directory
-INSTALL_DIR=~/bin curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | INSTALL_DIR=~/bin bash
 
 # macOS: install the .app to a custom location
-APP_DIR=/Applications INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | APP_DIR=/Applications INSTALL_DIR=/usr/local/bin bash
+
+# macOS: opt in to removing quarantine from the installed app
+curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | DOCX2MD_TRUST_APP=yes bash
 ```
 
 #### Windows (PowerShell)

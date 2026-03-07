@@ -32,9 +32,9 @@ function Write-Warn  { param([string]$Msg) Write-Host "Warning: $Msg" -Foregroun
 function Fail        { param([string]$Msg) Write-Host "Error: $Msg" -ForegroundColor Red; exit 1 }
 
 # ── Architecture check ────────────────────────────────────────────────────────
-$Arch = $env:PROCESSOR_ARCHITECTURE
-if ($Arch -notmatch 'AMD64|x86') {
-    Fail "Only x64 (AMD64) Windows is currently supported by pre-built releases.`nFor other architectures, install via npm: npm install -g docx-to-md"
+$Is64BitOS = [Environment]::Is64BitOperatingSystem
+if (-not $Is64BitOS) {
+    Fail "Only x64 Windows is currently supported by pre-built releases.`nFor other architectures, install via npm: npm install -g docx-to-md"
 }
 
 # ── Fetch latest release info ─────────────────────────────────────────────────
@@ -42,7 +42,7 @@ Write-Step "Fetching latest release information..."
 
 try {
     $Headers = @{ 'User-Agent' = 'docx-to-md-installer/1.0' }
-    $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -UseBasicParsing
+    $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers
 } catch {
     Fail "Failed to fetch release info from GitHub. Check your internet connection.`n$_"
 }
@@ -80,6 +80,12 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
 $DestExe = Join-Path $InstallDir "$AppName.exe"
 Copy-Item -Path $TmpFile -Destination $DestExe -Force
+try {
+    # Best-effort removal of Mark-of-the-Web on the installed executable.
+    Unblock-File -Path $DestExe -ErrorAction SilentlyContinue
+} catch {
+    # Ignore when unavailable or restricted.
+}
 
 # Clean up the temporary download directory.
 Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
