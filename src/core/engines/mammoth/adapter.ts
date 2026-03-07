@@ -68,22 +68,22 @@ export class MammothAdapter implements EngineAdapter {
         return image.read('base64').then((imageBase64) => {
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            const safeExisting = this.resolveExistingMediaPath(normalizedMediaDir, existing);
-            if (!safeExisting) {
+            const existingFilename = this.resolveExistingMediaFilename(existing);
+            if (!existingFilename) {
               warnings.push(`Skipped unsafe media path from content map: ${existing}`);
             } else {
               if (!assignedKeys.has(imageBase64)) {
                 // First encounter: write to the next sequential filename while
                 // preserving document order and avoiding collisions.
-                const ext = this.resolveImageExtension(safeExisting, image.contentType);
+                const ext = this.resolveImageExtension(existingFilename, image.contentType);
                 const newPath = this.nextAvailableImagePath(
                   mediaDir,
                   ext,
                   () => ++imageIndex,
-                  safeExisting,
+                  existingFilename,
                 );
 
-                if (safeExisting !== newPath) {
+                if (existingFilename !== path.basename(newPath)) {
                   fs.writeFileSync(newPath, Buffer.from(imageBase64, 'base64'));
                 }
 
@@ -99,7 +99,7 @@ export class MammothAdapter implements EngineAdapter {
               }
               // contentMap is guaranteed to have a value for imageBase64 here: it
               // was either just set above or was set during a previous encounter.
-              const finalPath = contentMap.get(imageBase64) ?? safeExisting;
+              const finalPath = contentMap.get(imageBase64) ?? path.join(normalizedMediaDir, existingFilename);
               return { src: path.relative(path.dirname(outputPath), finalPath) };
             }
           }
@@ -251,23 +251,13 @@ export class MammothAdapter implements EngineAdapter {
   }
 
 
-  /**
-   * Converts a possibly-untrusted contentMap path into a safe path rooted in
-   * mediaDir. Returns null when the value is not an allowed media filename.
-   */
-  private resolveExistingMediaPath(mediaDir: string, existingPath: string): string | null {
+  private resolveExistingMediaFilename(existingPath: string): string | null {
     const filename = path.basename(existingPath);
     // Extracted DOCX media names are expected to be simple filenames.
     if (!/^[a-z0-9][a-z0-9._-]*$/i.test(filename)) {
       return null;
     }
-
-    const candidate = path.resolve(mediaDir, filename);
-    if (!this.isPathWithinDirectory(mediaDir, candidate)) {
-      return null;
-    }
-
-    return candidate;
+    return filename;
   }
 
   /**
@@ -278,10 +268,10 @@ export class MammothAdapter implements EngineAdapter {
     mediaDir: string,
     ext: string,
     nextIndex: () => number,
-    currentPath?: string,
+    currentFilename?: string,
   ): string {
     const normalizedMediaDir = path.resolve(mediaDir);
-    const normalizedCurrentPath = currentPath ? path.resolve(currentPath) : null;
+    const normalizedCurrentFilename = currentFilename ? path.basename(currentFilename) : null;
 
     // Loop until we find a deterministic unused destination name.
     while (true) {
@@ -293,7 +283,7 @@ export class MammothAdapter implements EngineAdapter {
         throw new Error(`Unsafe media path generated: ${filename}`);
       }
 
-      if (normalizedCurrentPath && candidate === normalizedCurrentPath) {
+      if (normalizedCurrentFilename && filename === normalizedCurrentFilename) {
         return candidate;
       }
 
