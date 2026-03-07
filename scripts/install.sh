@@ -48,7 +48,7 @@ case "$OS" in
     ;;
   Linux)
     case "$ARCH" in
-      x86_64) ASSET_SUFFIX="linux-x64.AppImage" ;;
+      x86_64) ASSET_SUFFIX="linux-x86_64.AppImage" ;;
       *)
         error "Pre-built binaries are only available for Linux x86_64.
 For other architectures, install via npm:  npm install -g docx-to-md"
