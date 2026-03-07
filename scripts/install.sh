@@ -94,7 +94,13 @@ if [ "$OS" = "Darwin" ]; then
   if [ -n "${APP_DIR:-}" ]; then
     APPS_DIR="$APP_DIR"
     mkdir -p "$APPS_DIR" 2>/dev/null || error "Failed to create APP_DIR: $APPS_DIR. Ensure the parent directory exists and you have write permission (or re-run with sudo)."
-    [ -w "$APPS_DIR" ] || error "APP_DIR is not writable: $APPS_DIR. Re-run with sudo or choose a writable directory."
+    if [ -w "$APPS_DIR" ] || [ "$(id -u)" -eq 0 ]; then
+      :
+    elif sudo -n true 2>/dev/null; then
+      APPS_DIR_NEEDS_SUDO=true
+    else
+      error "APP_DIR is not writable: $APPS_DIR, and passwordless sudo is not available. Re-run with sudo or choose a writable directory."
+    fi
   elif [ -w "/Applications" ] || [ "$(id -u)" -eq 0 ]; then
     APPS_DIR="/Applications"
   elif sudo -n true 2>/dev/null; then
@@ -164,7 +170,9 @@ case "$OS" in
 
     info "Installing $APP_BUNDLE_NAME to $APPS_DIR/..."
     if [ "$APPS_DIR_NEEDS_SUDO" = true ]; then
-      sudo rm -rf "$DEST_APP" 2>/dev/null || true
+      if [ -e "$DEST_APP" ]; then
+        sudo rm -rf "$DEST_APP"
+      fi
       sudo cp -r "$APP_BUNDLE" "$DEST_APP"
     else
       [ -d "$DEST_APP" ] && rm -rf "$DEST_APP"
@@ -209,7 +217,7 @@ EOF
 
     # ── Linux desktop integration ─────────────────────────────────────────────
     # Create a .desktop entry so the app appears in the system application
-    # launcher (GNOME, KDE, XFCE, etc.) and is associated with .docx files.
+    # launcher (GNOME, KDE, XFCE, etc.) and advertises .docx support.
     DESKTOP_DIR="$HOME/.local/share/applications"
     ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
     mkdir -p "$DESKTOP_DIR" "$ICON_DIR" 2>/dev/null || true
@@ -222,13 +230,16 @@ EOF
       cp "$EXTRACT_DIR/squashfs-root/.DirIcon" "$ICON_DIR/$APP_NAME.png" 2>/dev/null || true
     fi
 
+    # Escape quotes/backslashes so Exec remains valid when INSTALL_DIR has spaces.
+    DESKTOP_EXEC_BIN="$(printf '%s' "$DEST_BIN" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+
     DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
     cat > "$DESKTOP_FILE" <<DESKTOP_EOF
 [Desktop Entry]
 Name=$APP_NAME
 GenericName=Document Converter
 Comment=Convert DOCX files to Markdown
-Exec=$DEST_BIN %f
+Exec="$DESKTOP_EXEC_BIN" %f
 Icon=$APP_NAME
 Terminal=false
 Type=Application
@@ -238,6 +249,7 @@ StartupNotify=true
 DESKTOP_EOF
     chmod 644 "$DESKTOP_FILE" 2>/dev/null || true
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    xdg-mime default "$APP_NAME.desktop" application/vnd.openxmlformats-officedocument.wordprocessingml.document 2>/dev/null || true
     success "Desktop entry installed at $DESKTOP_FILE"
     ;;
 esac

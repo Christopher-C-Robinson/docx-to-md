@@ -33,7 +33,7 @@ What the script does:
 - Detects your OS and CPU architecture (macOS arm64/x64, Linux x64)
 - Downloads the latest pre-built release from GitHub
 - **macOS**: extracts the `.app` bundle to `/Applications/` (uses passwordless `sudo` if needed; falls back to `~/Applications/` when unavailable), preserving Gatekeeper checks by default
-- **Linux**: copies the `.AppImage` to `/usr/local/bin/` (or `~/.local/bin/` if not writable), creates a `.desktop` entry so the app appears in the system application launcher, and installs the app icon
+- **Linux**: copies the `.AppImage` to the directory specified by `INSTALL_DIR` when set; otherwise prefers `/usr/local/bin/` (first if writable, then via passwordless `sudo` when available), and falls back to `~/.local/bin/`; it also creates a `.desktop` entry so the app appears in the system application launcher and installs the app icon
 - Creates a `docx2md` terminal launcher
 
 Override the install directories:
