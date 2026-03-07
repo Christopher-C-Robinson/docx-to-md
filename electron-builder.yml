@@ -22,10 +22,38 @@ npmRebuild: true
 mac:
   category: public.app-category.productivity
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  # Hardened Runtime is required for Apple notarization.
+  hardenedRuntime: true
+  # Entitlements grant the JIT / unsigned-memory permissions Electron needs
+  # while still running under the Hardened Runtime sandbox.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Automatic notarization via Apple notarytool.
+  # Reads APPLE_ID, APPLE_ID_PASSWORD (app-specific password), and
+  # APPLE_TEAM_ID from environment variables.  If those variables are not
+  # set the notarization step is silently skipped.
+  notarize:
+    teamId: ${APPLE_TEAM_ID}
   target:
-    - zip
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
 
 win:
+  # Code-signing certificate supplied via WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD
+  # (or CSC_LINK / CSC_KEY_PASSWORD) environment variables, as a base64-encoded
+  # .p12 file or a filesystem path. When those variables are not set,
+  # electron-builder skips signing automatically.
+  signingHashAlgorithms:
+    - sha256
   target:
     - target: nsis
       arch:

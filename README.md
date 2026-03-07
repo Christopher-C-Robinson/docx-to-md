@@ -38,19 +38,18 @@ The recommended way to use docx-to-md on Windows and macOS is via the native des
    |----------|-----------------|
    | Windows (installer) | `docx2md-<version>-win-x64-installer.exe` |
    | Windows (portable)  | `docx2md-<version>-win-x64-portable.exe` |
-   | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.zip` |
-   | macOS (Intel)         | `docx2md-<version>-mac-x64.zip` |
+   | macOS (Apple Silicon) | `docx2md-<version>-mac-arm64.dmg` |
+   | macOS (Intel)         | `docx2md-<version>-mac-x64.dmg` |
    | Linux                 | `docx2md-<version>-linux-x86_64.AppImage` |
 
 2. **Windows — installer**: Run the `.exe` setup wizard.  Choose an installation directory, optionally create a Desktop shortcut, and follow the prompts.
 
 3. **Windows — portable**: No installation needed.  Place the `.exe` anywhere and run it directly.
 
-4. **macOS**: Open the `.zip`, drag **docx2md.app** to your *Applications* folder, then launch it from Launchpad or Spotlight.
-   > **Gatekeeper notice**: macOS may show a warning because the app is not notarized.  Right-click the app, choose **Open**, then click **Open** in the dialog.
-   > If you only see **Move to Trash / Done**, go to **System Settings -> Privacy & Security** and click **Open Anyway** for `docx2md.app`.
-   > Terminal fallback:
-   > `xattr -dr com.apple.quarantine /Applications/docx2md.app && open /Applications/docx2md.app`
+4. **macOS**: Open the `.dmg`, drag **docx2md.app** to your *Applications* folder, then launch it from Launchpad or Spotlight.
+   > **Signed & notarized releases**: When the release was built with code-signing secrets configured, macOS Gatekeeper will trust the app immediately and no extra steps are required.
+   >
+   > **Unsigned releases** (e.g. unofficial or locally built): macOS may show a Gatekeeper warning.  Right-click the app, choose **Open**, then click **Open** in the dialog.  If you only see **Move to Trash / Done**, go to **System Settings → Privacy & Security** and click **Open Anyway** for `docx2md.app`.
 
 5. (Optional) Install Pandoc with the GUI installer from pandoc.org for improved DOCX fidelity. If Pandoc is not installed, docx-to-md automatically falls back to Mammoth.
 
@@ -97,6 +96,29 @@ When the tag is pushed, GitHub Actions will:
 - upload the generated files as release assets
 
 You can also run the workflow manually from the Actions tab using **Release** -> **Run workflow** and passing an existing tag.
+
+##### Setting up code signing secrets (recommended)
+
+Configure the following repository secrets under **Settings → Secrets and variables → Actions** to produce signed and notarized artifacts.  All secrets are optional — if they are absent, unsigned artifacts are built instead.
+
+**macOS signing & Apple notarization**
+
+| Secret | Description |
+|--------|-------------|
+| `CSC_LINK` | Base64-encoded `.p12` export of your *Developer ID Application* certificate from Keychain Access (export the cert + private key, then run `base64 -i cert.p12 | tr -d '\n'`). |
+| `CSC_KEY_PASSWORD` | Passphrase you chose when exporting the `.p12` file. |
+| `APPLE_ID` | Apple ID email used to log in to App Store Connect / notarytool. |
+| `APPLE_ID_PASSWORD` | App-specific password for that Apple ID (generated at [appleid.apple.com](https://appleid.apple.com)). |
+| `APPLE_TEAM_ID` | 10-character Team ID shown in the Apple Developer portal (e.g. `ABC1234XYZ`). |
+
+**Windows code signing** (removes SmartScreen warnings)
+
+| Secret | Description |
+|--------|-------------|
+| `WIN_CSC_LINK` | Base64-encoded `.p12` export of your Windows code-signing certificate. |
+| `WIN_CSC_KEY_PASSWORD` | Passphrase for the Windows `.p12` file. |
+
+> **Why signing matters**: A signed and notarized macOS build passes Gatekeeper on first launch without any terminal commands.  A signed Windows build eliminates the SmartScreen "Unknown publisher" dialog.
 
 #### Running in development
 
