@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.13] – 2026-03-07
+
+### Added
+- improve installer to place app in correct system directories for each OS
+
+### Fixed
+- ignore workflow commits in release detection
+- move changelog update to publish job to prevent orphan entries on failed builds
+
+### Changed
+- Merge pull request #69 from Christopher-C-Robinson/copilot/improve-install-behavior
+- Merge pull request #71 from Christopher-C-Robinson/copilot/fix-changelog-inconsistencies
+- Address PR review feedback for installer behavior
+- Initial plan
+- Initial plan
+
 ## [0.1.12] – 2026-03-07
 
 ### Added
