@@ -48,9 +48,10 @@ dmg:
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
 
 win:
-  # Code-signing certificate supplied via CSC_LINK / CSC_KEY_PASSWORD env
-  # vars (base64-encoded .p12 or path to the file).  When those variables
-  # are not set electron-builder skips signing automatically.
+  # Code-signing certificate supplied via WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD
+  # (or CSC_LINK / CSC_KEY_PASSWORD) environment variables, as a base64-encoded
+  # .p12 file or a filesystem path. When those variables are not set,
+  # electron-builder skips signing automatically.
   signingHashAlgorithms:
     - sha256
   target:

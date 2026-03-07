@@ -74,7 +74,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
-      - name: Build installer artifacts
+      - name: Build installer artifacts (macOS)
+        if: matrix.target.id == 'mac'
         env:
           # ── macOS code-signing & notarization (optional) ──────────────────
           # Set these repository secrets to enable signing and notarization.
@@ -91,11 +92,20 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run ${{ matrix.target.script }}
+
+      - name: Build installer artifacts (Windows)
+        if: matrix.target.id == 'win'
+        env:
           # ── Windows code-signing (optional) ───────────────────────────────
           # WIN_CSC_LINK         – base64-encoded .p12 certificate for Windows
           # WIN_CSC_KEY_PASSWORD – passphrase for the Windows .p12 certificate
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npm run ${{ matrix.target.script }}
+
+      - name: Build installer artifacts (Linux)
+        if: matrix.target.id == 'linux'
         run: npm run ${{ matrix.target.script }}
 
       - name: Upload artifacts (${{ matrix.target.label }})
