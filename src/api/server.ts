@@ -112,6 +112,37 @@ function sanitizeAssetFilename(filename: string): string {
   return basename;
 }
 
+function hasFilesInDirectory(dirPath: string): boolean {
+  if (!fs.existsSync(dirPath)) {
+    return false;
+  }
+  return fs.readdirSync(dirPath).length > 0;
+}
+
+function pipeZipArchive(
+  res: Response,
+  filename: string,
+  buildArchive: (archive: archiver.Archiver) => void
+): void {
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  archive.on('error', (err) => {
+    if (res.headersSent || res.writableEnded) {
+      res.destroy(err);
+      return;
+    }
+    res.status(500).json({ error: 'Failed to create archive.' });
+  });
+
+  archive.pipe(res);
+  buildArchive(archive);
+  archive.finalize().catch(() => {
+    // best effort
+  });
+}
+
 const appStorage = multer.diskStorage({
   destination(_req, _file, cb) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-upload-'));
@@ -388,7 +419,7 @@ export function createApp(): express.Application {
     try {
       sessionId = normalizeSessionId(req.params['sessionId']);
     } catch {
-      res.status(400).json({ error: 'Invalid session id' });
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
     if (!sessions.has(sessionId)) {
@@ -421,13 +452,14 @@ export function createApp(): express.Application {
     try {
       sessionId = normalizeSessionId(req.params['sessionId']);
     } catch {
-      res.status(400).json({ error: 'Invalid session id' });
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
     if (!sessions.has(sessionId)) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
+
     const { sessionDir, markdownPath } = sessionPaths(sessionId);
     if (!fs.existsSync(markdownPath)) {
       res.status(404).json({ error: 'Markdown file not found' });
@@ -441,34 +473,49 @@ export function createApp(): express.Application {
     try {
       sessionId = normalizeSessionId(req.params['sessionId']);
     } catch {
-      res.status(400).json({ error: 'Invalid session id' });
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
     if (!sessions.has(sessionId)) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
+
     const { mediaDir } = sessionPaths(sessionId);
     if (!fs.existsSync(mediaDir)) {
       res.status(404).json({ error: 'No images found for this session' });
       return;
     }
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="images.zip"');
-
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    archive.on('error', (err) => {
-      if (res.headersSent || res.writableEnded) {
-        res.destroy(err);
-        return;
-      }
-      res.status(500).json({ error: 'Failed to archive images.' });
+    pipeZipArchive(res, 'images.zip', (archive) => {
+      archive.directory(mediaDir, false);
     });
-    archive.pipe(res);
-    archive.directory(mediaDir, false);
-    archive.finalize().catch(() => {
-      // best effort
+  });
+
+  app.get('/api/download/zip/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+    if (!sessions.has(sessionId)) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+
+    const { markdownPath, mediaDir } = sessionPaths(sessionId);
+    if (!fs.existsSync(markdownPath)) {
+      res.status(404).json({ error: 'Conversion output not found' });
+      return;
+    }
+
+    pipeZipArchive(res, 'document.zip', (archive) => {
+      archive.file(markdownPath, { name: 'document.md' });
+      if (hasFilesInDirectory(mediaDir)) {
+        archive.directory(mediaDir, 'media');
+      }
     });
   });
 

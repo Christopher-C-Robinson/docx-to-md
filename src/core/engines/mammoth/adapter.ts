@@ -124,7 +124,7 @@ export class MammothAdapter implements EngineAdapter {
       }
     }
 
-    const html = this.sanitizeHtml(htmlResult.value);
+    const html = this.sanitizeHtml(this.cleanImageAltText(htmlResult.value));
 
     const td = new TurndownService({
       headingStyle: 'atx',
@@ -143,6 +143,42 @@ export class MammothAdapter implements EngineAdapter {
     fs.writeFileSync(outputPath, finalMd, 'utf8');
 
     return { markdown: finalMd, assets, warnings, metadata };
+  }
+
+  /** Phrases that identify Word-generated auto-accessibility alt text. */
+  private static readonly WORD_GENERATED_ALT_PATTERNS: readonly string[] = [
+    'a screenshot of a computer',
+    'ai-generated content may be incorrect',
+  ];
+
+  /**
+   * Remove or normalize Word-generated accessibility alt text from images.
+   * Microsoft Word automatically inserts descriptions like "A screenshot of a
+   * computer" or "AI-generated content may be incorrect." which are not
+   * meaningful in documentation.
+   */
+  static cleanAltText(text: string): string {
+    if (!text) return '';
+    const lower = text.toLowerCase();
+    if (
+      MammothAdapter.WORD_GENERATED_ALT_PATTERNS.some((p) => lower.includes(p))
+    ) {
+      return '';
+    }
+    return text.trim();
+  }
+
+  /**
+   * Strip Word-generated accessibility alt text from all img elements in HTML.
+   */
+  private cleanImageAltText(html: string): string {
+    return html.replace(
+      /(<img\b[^>]*?)\s*alt="([^"]*)"([^>]*?>)/gi,
+      (_match, before: string, alt: string, after: string) => {
+        const cleaned = MammothAdapter.cleanAltText(alt);
+        return cleaned ? `${before} alt="${cleaned}"${after}` : `${before}${after}`;
+      }
+    );
   }
 
   /**

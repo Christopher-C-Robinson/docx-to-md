@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
+import JSZip from 'jszip';
 import { createApp } from '../../src/api/server';
 
 const MAMMOTH_TEST_DATA = path.resolve(
@@ -70,7 +71,7 @@ describe('API server', () => {
     });
   }
 
-  function get(urlPath: string): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  function get(urlPath: string): Promise<{ status: number; body: string; rawBody: Buffer; headers: Record<string, string | string[] | undefined> }> {
     return new Promise((resolve, reject) => {
       http.get(`${baseUrl}${urlPath}`, (res) => {
         const chunks: Buffer[] = [];
@@ -78,6 +79,7 @@ describe('API server', () => {
         res.on('end', () => {
           resolve({
             status: res.statusCode ?? 0,
+            rawBody: Buffer.concat(chunks),
             body: Buffer.concat(chunks).toString(),
             headers: res.headers as Record<string, string | string[] | undefined>,
           });
@@ -160,6 +162,39 @@ describe('API server', () => {
     const res = await get(`/api/download/images/${sessionId}`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/zip');
+  });
+
+  test('GET /api/download/zip/:sessionId returns a zip with markdown and media', async () => {
+    const convert = await postConvert(IMAGE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/download/zip/${sessionId}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    const disposition = res.headers['content-disposition'] as string;
+    expect(disposition).toContain('document.zip');
+
+    const zip = await JSZip.loadAsync(res.rawBody);
+    const entries = Object.keys(zip.files);
+    expect(entries).toContain('document.md');
+    expect(entries.some((entry) => entry.startsWith('media/'))).toBe(true);
+  });
+
+  test('GET /api/download/zip/:sessionId omits media for markdown-only documents', async () => {
+    const convert = await postConvert(SIMPLE_DOCX);
+    const sessionId = convert.body['sessionId'] as string;
+    const res = await get(`/api/download/zip/${sessionId}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+
+    const zip = await JSZip.loadAsync(res.rawBody);
+    const entries = Object.keys(zip.files);
+    expect(entries).toContain('document.md');
+    expect(entries.some((entry) => entry.startsWith('media/'))).toBe(false);
+  });
+
+  test('GET /api/download/zip with unknown sessionId returns 404', async () => {
+    const res = await get('/api/download/zip/nonexistent-session-id');
+    expect(res.status).toBe(404);
   });
 
   test('GET /api/download/markdown with unknown sessionId returns 404', async () => {

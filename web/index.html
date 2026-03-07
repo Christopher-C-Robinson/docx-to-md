@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>docx → md Converter</title>
-  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/markdown-it.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -456,6 +456,7 @@
       <div class="toolbar">
         <h3>Markdown</h3>
         <button class="btn-primary" id="dl-md-btn">⬇ Download .md</button>
+        <button class="btn-primary" id="dl-zip-btn">⬇ Download .zip</button>
         <button class="btn-secondary" id="copy-md-btn">📋 Copy</button>
       </div>
       <div class="tab-bar" role="tablist">
@@ -496,6 +497,18 @@
     // Prevent XSS: all user-supplied content goes through these helpers
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+    // Rewrite media-relative image sources in rendered HTML to API URLs for preview rendering.
+    // Handles both `media/file` and `media\file` sources and rewrites only immediate filenames.
+    // The raw Markdown stored in markdownRaw is never modified.
+    function rewriteRenderedImagePaths(html, sid) {
+      if (!sid) return html;
+      const base = '/api/images/' + encodeURIComponent(sid) + '/';
+      return html.replace(
+        /(<img\b[^>]*\bsrc=)(["']?)media[\\/]([^"'\\/\s>]+)\2/gi,
+        (_, prefix, quote, filename) => `${prefix}${quote}${base}${encodeURIComponent(filename)}${quote}`
+      );
+    }
+
     let markdownRaw = '';
     let sessionId = '';
 
@@ -513,6 +526,7 @@
     const imgGrid       = document.getElementById('img-grid');
     const resetBtn      = document.getElementById('reset-btn');
     const dlMdBtn       = document.getElementById('dl-md-btn');
+    const dlZipBtn      = document.getElementById('dl-zip-btn');
     const dlImgsBtn     = document.getElementById('dl-imgs-btn');
     const copyMdBtn     = document.getElementById('copy-md-btn');
     const tabPreview    = document.getElementById('tab-preview');
@@ -522,6 +536,7 @@
     const batchTitle    = document.getElementById('batch-title');
     const batchConvertBtn = document.getElementById('batch-convert-btn');
     const batchResetBtn   = document.getElementById('batch-reset-btn');
+    const markdownRenderer = new markdownit({ html: true, linkify: true, typographer: false });
 
     function toUserError(err) {
       if (err instanceof Error) {
@@ -633,7 +648,8 @@
         copyMdBtn.textContent = '✓ Copied!';
         setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       } catch {
-        copyMdBtn.textContent = 'Copy failed';
+        copyMdBtn.textContent = '✗ Copy failed';
+        setTimeout(() => { copyMdBtn.textContent = '📋 Copy'; }, 2000);
       }
     });
 
@@ -641,6 +657,12 @@
     dlMdBtn.addEventListener('click', () => {
       if (!sessionId) return;
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
+    });
+
+    // ── Download zip (markdown + media) ───────────────────────────────────
+    dlZipBtn.addEventListener('click', () => {
+      if (!sessionId) return;
+      window.location.href = `/api/download/zip/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download images ────────────────────────────────────────────────────
@@ -679,9 +701,11 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (sanitised via DOMPurify + marked)
+        // Markdown preview (render markdown -> rewrite image src -> sanitise)
         mdRaw.value = markdownRaw;
-        mdPreview.innerHTML = DOMPurify.sanitize(marked.parse(markdownRaw, { breaks: false, gfm: true }));
+        const renderedMarkdown = markdownRenderer.render(markdownRaw);
+        const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
+        mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
         resultSection.classList.add('visible');
 
         // Images
@@ -730,6 +754,7 @@
       const actions = item.status === 'done'
         ? `<div class="batch-actions">
              <button class="btn-primary" data-batch-action="md" data-batch-index="${i}">⬇ .md</button>
+             <button class="btn-primary" data-batch-action="zip" data-batch-index="${i}">⬇ .zip</button>
              ${item.hasImages ? `<button class="btn-secondary" data-batch-action="imgs" data-batch-index="${i}">⬇ images</button>` : ''}
            </div>`
         : (item.status === 'error'
@@ -763,6 +788,8 @@
       if (!item?.sessionId) return;
       if (action === 'md') {
         window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
+      } else if (action === 'zip') {
+        window.location.href = `/api/download/zip/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'imgs') {
         window.location.href = `/api/download/images/${encodeURIComponent(item.sessionId)}`;
       }
