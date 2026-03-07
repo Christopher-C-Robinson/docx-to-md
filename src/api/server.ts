@@ -12,6 +12,18 @@ import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
+
+// Root directory under which all upload/session directories must reside.
+const UPLOAD_ROOT = path.resolve(path.join(os.tmpdir(), 'docx-to-markdown-sessions'));
+
+function isPathWithinDirectory(rootDir: string, candidatePath: string): boolean {
+  const normalizedRoot = path.resolve(rootDir);
+  const normalizedCandidate = path.resolve(candidatePath);
+  if (process.platform === 'win32') {
+    return normalizedCandidate.toLowerCase().startsWith(normalizedRoot.toLowerCase() + path.sep);
+  }
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + path.sep);
+}
 /** Maximum number of conversion requests per IP within the rate-limit window. */
 export const RATE_LIMIT_MAX = 20;
 /** Rate-limit window in milliseconds (15 minutes). */
@@ -306,7 +318,14 @@ export function createApp(): express.Application {
         return;
       }
 
-      const uploadDir = req.file.destination;
+      const rawUploadDir = req.file.destination;
+      const normalizedUploadDir = path.resolve(rawUploadDir);
+      if (!isPathWithinDirectory(UPLOAD_ROOT, normalizedUploadDir)) {
+        res.status(400).json({ error: 'Invalid upload directory.' });
+        return;
+      }
+
+      const uploadDir = normalizedUploadDir;
       const inputPath = req.file.path;
       const sessionId = createSessionId();
       const sessionDir = uploadDir;
