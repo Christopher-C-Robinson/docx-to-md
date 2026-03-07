@@ -370,23 +370,22 @@ export function createApp(): express.Application {
       const sessionId = createSessionId();
       const { sessionDir, markdownPath, mediaDir } = sessionPaths(sessionId);
       const inputPath = req.file.path;
-      const inputDir = req.file.destination;
+      const uploadDirName = path.basename(String(req.file.destination ?? ''));
+      const uploadFileName = path.basename(String(req.file.filename ?? ''));
 
       const cleanupUpload = (): void => {
-        try {
-          const resolvedInputPath = path.resolve(inputPath);
-          if (isPathWithinDirectory(os.tmpdir(), resolvedInputPath)) {
-            fs.rmSync(resolvedInputPath, { force: true });
-          }
-        } catch {
-          // best effort
+        if (!/^docx-upload-[a-z0-9-]+$/i.test(uploadDirName)) {
+          return;
+        }
+        if (!/^upload\.docx$/i.test(uploadFileName)) {
+          return;
         }
         try {
-          if (typeof inputDir === 'string') {
-            const resolvedInputDir = path.resolve(inputDir);
-            if (isPathWithinDirectory(os.tmpdir(), resolvedInputDir)) {
-              fs.rmSync(resolvedInputDir, { recursive: true, force: true });
-            }
+          const resolvedInputDir = path.resolve(os.tmpdir(), uploadDirName);
+          if (isPathWithinDirectory(os.tmpdir(), resolvedInputDir)) {
+            const resolvedInputPath = path.resolve(resolvedInputDir, uploadFileName);
+            fs.rmSync(resolvedInputPath, { force: true });
+            fs.rmSync(resolvedInputDir, { recursive: true, force: true });
           }
         } catch {
           // best effort
