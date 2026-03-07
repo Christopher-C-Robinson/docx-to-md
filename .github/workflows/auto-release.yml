@@ -263,6 +263,27 @@ jobs:
         run: npm ci --include=dev
 
       - name: Build installer artifacts
+        env:
+          # ── macOS code-signing & notarization (optional) ──────────────────
+          # Set these repository secrets to enable signing and notarization.
+          # If they are not configured, electron-builder silently skips
+          # signing and notarization and produces unsigned artifacts instead.
+          #
+          # CSC_LINK            – base64-encoded .p12 Developer ID certificate
+          # CSC_KEY_PASSWORD    – passphrase for the .p12 certificate
+          # APPLE_ID            – Apple ID used for notarization
+          # APPLE_ID_PASSWORD   – app-specific password for that Apple ID
+          # APPLE_TEAM_ID       – 10-character Apple Developer Team ID
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # ── Windows code-signing (optional) ───────────────────────────────
+          # WIN_CSC_LINK         – base64-encoded .p12 certificate for Windows
+          # WIN_CSC_KEY_PASSWORD – passphrase for the Windows .p12 certificate
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run ${{ matrix.target.script }}
 
       - name: Upload artifacts (${{ matrix.target.label }})
@@ -270,6 +291,7 @@ jobs:
         with:
           name: release-${{ matrix.target.id }}
           path: |
+            release/*-mac-*.dmg
             release/*-mac-*.zip
             release/*-win-*-installer.exe
             release/*-win-*-portable.exe
@@ -310,7 +332,8 @@ jobs:
           fi
 
           mapfile -t files < <(find release-assets -maxdepth 1 -type f \
-            \( -name "*-mac-*.zip" \
+            \( -name "*-mac-*.dmg" \
+            -o -name "*-mac-*.zip" \
             -o -name "*-win-*-installer.exe" \
             -o -name "*-win-*-portable.exe" \
             -o -name "*-linux-*.AppImage" \))
