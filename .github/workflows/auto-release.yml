@@ -79,10 +79,14 @@ jobs:
           LATEST_TAG="${{ steps.latest.outputs.tag }}"
           HAS_RELEASE="${{ steps.latest.outputs.found }}"
 
+          # Ignore workflow-generated commits so changelog/version housekeeping
+          # does not trigger an extra release by itself.
+          IGNORE_SUBJECT_RE='^(chore\(release\):|docs\(changelog\):)'
+
           if [ "$HAS_RELEASE" = "true" ]; then
-            COMMIT_COUNT=$(git rev-list "${LATEST_TAG}..HEAD" --count)
+            COMMIT_COUNT=$(git log --pretty=format:%s "${LATEST_TAG}..HEAD" | grep -Evc "${IGNORE_SUBJECT_RE}" || true)
           else
-            COMMIT_COUNT=$(git rev-list HEAD --count)
+            COMMIT_COUNT=$(git log --pretty=format:%s HEAD | grep -Evc "${IGNORE_SUBJECT_RE}" || true)
           fi
 
           echo "commit_count=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
@@ -403,7 +407,7 @@ jobs:
             fi
             echo "Push attempt ${attempt} failed – rebasing and retrying…"
             if ! git pull --rebase origin main; then
-              git rebase --abort
+              git rebase --abort || true
               echo "Rebase failed; will retry from current HEAD on next attempt."
             fi
           done
