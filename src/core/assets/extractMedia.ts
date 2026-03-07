@@ -30,7 +30,8 @@ function resolveDocxInputPath(docxPath: string): string {
   }
 
   const normalized = path.normalize(raw);
-  if (!/^[a-z0-9_./\\:() -]+$/i.test(normalized)) {
+  // Allow Windows 8.3 short-name segments (for example: RUNNER~1).
+  if (!/^[a-z0-9_./\\:() ~-]+$/i.test(normalized)) {
     throw new Error('Unsupported characters in DOCX path');
   }
   if (/(^|[\\/])\.\.([\\/]|$)/.test(normalized)) {
