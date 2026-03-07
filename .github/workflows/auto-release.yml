@@ -280,7 +280,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run ${{ matrix.target.script }}
+        run: |
+          [ -n "${CSC_LINK}" ] || unset CSC_LINK
+          [ -n "${CSC_KEY_PASSWORD}" ] || unset CSC_KEY_PASSWORD
+          [ -n "${APPLE_ID}" ] || unset APPLE_ID
+          [ -n "${APPLE_ID_PASSWORD}" ] || unset APPLE_ID_PASSWORD
+          [ -n "${APPLE_TEAM_ID}" ] || unset APPLE_TEAM_ID
+          npm run ${{ matrix.target.script }}
 
       - name: Build installer artifacts (Windows)
         if: matrix.target.id == 'win'
@@ -290,7 +296,10 @@ jobs:
           # WIN_CSC_KEY_PASSWORD – passphrase for the Windows .p12 certificate
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run ${{ matrix.target.script }}
+        run: |
+          [ -n "${WIN_CSC_LINK}" ] || unset WIN_CSC_LINK
+          [ -n "${WIN_CSC_KEY_PASSWORD}" ] || unset WIN_CSC_KEY_PASSWORD
+          npm run ${{ matrix.target.script }}
 
       - name: Build installer artifacts (Linux)
         if: matrix.target.id == 'linux'
