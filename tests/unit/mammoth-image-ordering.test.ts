@@ -204,6 +204,27 @@ describe('MammothAdapter – deterministic image ordering', () => {
     );
   });
 
+
+  test('skips unsafe contentMap path and falls back to sequential write', async () => {
+    const unsafeMap = new Map<string, string>([
+      ['aaa', '../..'],
+    ]);
+    mockExtractMedia.mockReturnValue({ assets: ['../..'], warnings: [], contentMap: unsafeMap });
+
+    const { getCaptured } = setupImgElementMock();
+    setupConvertToHtmlMock([{ base64: 'aaa', contentType: 'image/png' }], getCaptured);
+
+    const result = await adapter.convert('/fake/input.docx', outputPath, { format: 'gfm', mediaDir });
+
+    const { renameSync, writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(renameSync).not.toHaveBeenCalled();
+    expect(writeFileSync).toHaveBeenCalledWith(
+      path.join(resolvedMediaDir, 'image-01.png'),
+      expect.any(Buffer),
+    );
+    expect(result.warnings).toContain('Skipped unsafe media path from content map: ../..');
+  });
+
   test('fallback OLE image uses sequential name and writes the file', async () => {
     // No entries in contentMap → every image triggers the fallback path.
     mockExtractMedia.mockReturnValue({ assets: [], warnings: [], contentMap: new Map() });

@@ -67,18 +67,18 @@ export class MammothAdapter implements EngineAdapter {
         return image.read('base64').then((imageBase64) => {
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            const resolvedExisting = path.resolve(existing);
-            if (!this.isPathWithinDirectory(normalizedMediaDir, resolvedExisting)) {
+            const safeExisting = this.resolveExistingMediaPath(normalizedMediaDir, existing);
+            if (!safeExisting) {
               warnings.push(`Skipped unsafe media path from content map: ${existing}`);
             } else {
               if (!renamedKeys.has(imageBase64)) {
                 // First encounter: rename to the next sequential filename,
                 // avoiding collisions with any existing files.
-                const ext = this.resolveImageExtension(resolvedExisting, image.contentType);
+                const ext = this.resolveImageExtension(safeExisting, image.contentType);
                 const newPath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
 
-                if (resolvedExisting !== newPath) {
-                  fs.renameSync(resolvedExisting, newPath);
+                if (safeExisting !== newPath) {
+                  fs.renameSync(safeExisting, newPath);
                   const idx = assets.indexOf(existing);
                   if (idx !== -1) assets[idx] = newPath;
                 }
@@ -88,7 +88,7 @@ export class MammothAdapter implements EngineAdapter {
               }
               // contentMap is guaranteed to have a value for imageBase64 here: it
               // was either just set above or was set during a previous encounter.
-              const finalPath = contentMap.get(imageBase64) ?? resolvedExisting;
+              const finalPath = contentMap.get(imageBase64) ?? safeExisting;
               return { src: path.relative(path.dirname(outputPath), finalPath) };
             }
           }
@@ -192,6 +192,26 @@ export class MammothAdapter implements EngineAdapter {
     const typeSuffix = contentType.split('/')[1] ?? 'png';
     const sanitized = typeSuffix.toLowerCase().replace(/[^a-z0-9]/g, '');
     return sanitized ? `.${sanitized}` : '.png';
+  }
+
+
+  /**
+   * Converts a possibly-untrusted contentMap path into a safe path rooted in
+   * mediaDir. Returns null when the value is not an allowed media filename.
+   */
+  private resolveExistingMediaPath(mediaDir: string, existingPath: string): string | null {
+    const filename = path.basename(existingPath);
+    // Extracted DOCX media names are expected to be simple filenames.
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(filename)) {
+      return null;
+    }
+
+    const candidate = path.resolve(mediaDir, filename);
+    if (!this.isPathWithinDirectory(mediaDir, candidate)) {
+      return null;
+    }
+
+    return candidate;
   }
 
   /**
