@@ -32,8 +32,8 @@ What the script does:
 
 - Detects your OS and CPU architecture (macOS arm64/x64, Linux x64)
 - Downloads the latest pre-built release from GitHub
-- **macOS**: extracts the `.app` bundle to `~/Applications/` (or a writable fallback), preserving Gatekeeper checks by default
-- **Linux**: copies the `.AppImage` to `~/.local/bin/` (or `/usr/local/bin/` if writable) and makes it executable
+- **macOS**: extracts the `.app` bundle to `/Applications/` (uses passwordless `sudo` if needed; falls back to `~/Applications/` when unavailable), preserving Gatekeeper checks by default
+- **Linux**: copies the `.AppImage` to the directory specified by `INSTALL_DIR` when set; otherwise prefers `/usr/local/bin/` (first if writable, then via passwordless `sudo` when available), and falls back to `~/.local/bin/`; it also creates a `.desktop` entry so the app appears in the system application launcher and installs the app icon
 - Creates a `docx2md` terminal launcher
 
 Override the install directories:
@@ -42,8 +42,8 @@ Override the install directories:
 # Install binary to a custom directory
 curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | INSTALL_DIR=~/bin bash
 
-# macOS: install the .app to a custom location
-curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | APP_DIR=/Applications INSTALL_DIR=/usr/local/bin bash
+# macOS: install the .app to a custom location instead of /Applications
+curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | APP_DIR=~/Applications INSTALL_DIR=~/bin bash
 
 # macOS: opt in to removing quarantine from the installed app
 curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | DOCX2MD_TRUST_APP=yes bash
@@ -58,8 +58,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubus
 What the script does:
 
 - Downloads the latest portable `.exe` from GitHub (no installer wizard, no UAC prompt)
-- Copies it to `%LOCALAPPDATA%\docx-to-md\bin\docx2md.exe`
+- Copies it to `%LOCALAPPDATA%\Programs\docx-to-md\docx2md.exe`
 - Adds that directory to your **user** PATH (no admin rights required)
+- Creates a **Start Menu** shortcut so you can launch the app without opening a terminal
 
 Override the install directory:
 

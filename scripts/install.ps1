@@ -5,7 +5,7 @@
 #
 # Environment overrides:
 #   $env:DOCX2MD_INSTALL_DIR  — directory to install the docx2md binary
-#                               (default: %LOCALAPPDATA%\docx-to-md\bin)
+#                               (default: %LOCALAPPDATA%\Programs\docx-to-md)
 
 [CmdletBinding()]
 param()
@@ -22,7 +22,7 @@ $AssetSuffix = 'win-x64-portable.exe'
 if ($env:DOCX2MD_INSTALL_DIR) {
     $InstallDir = $env:DOCX2MD_INSTALL_DIR
 } else {
-    $InstallDir = Join-Path $env:LOCALAPPDATA 'docx-to-md\bin'
+    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\docx-to-md'
 }
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -107,12 +107,31 @@ if ($PathDirs -notcontains $InstallDir) {
     Write-Ok "$InstallDir is already on your PATH."
 }
 
+# ── Start Menu shortcut ───────────────────────────────────────────────────────
+$StartMenuDir = [System.IO.Path]::Combine(
+    $env:APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+New-Item -ItemType Directory -Path $StartMenuDir -Force | Out-Null
+
+$ShortcutPath = Join-Path $StartMenuDir "$AppName.lnk"
+try {
+    $WshShell  = New-Object -ComObject WScript.Shell
+    $Shortcut  = $WshShell.CreateShortcut($ShortcutPath)
+    $Shortcut.TargetPath      = $DestExe
+    $Shortcut.Description     = 'Convert DOCX files to Markdown'
+    $Shortcut.WorkingDirectory = $InstallDir
+    $Shortcut.Save()
+    Write-Ok "Start Menu shortcut created at $ShortcutPath"
+} catch {
+    Write-Warn "Could not create Start Menu shortcut: $_"
+}
+
 # ── Success message ───────────────────────────────────────────────────────────
 Write-Host ""
 Write-Ok "docx-to-md $Version installed!"
 Write-Host ""
 Write-Host "Launch the desktop app:" -ForegroundColor Cyan
 Write-Host "  docx2md.exe"
+Write-Host "  # or search for 'docx2md' in the Start Menu"
 Write-Host "  # or double-click $DestExe"
 Write-Host ""
 Write-Host "CLI (Node.js required):" -ForegroundColor Cyan

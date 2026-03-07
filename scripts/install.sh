@@ -8,7 +8,8 @@
 #   INSTALL_DIR   — directory to install the docx2md binary (default: /usr/local/bin,
 #                   falls back to ~/.local/bin if not writable without sudo)
 #   APP_DIR       — macOS only: directory for the .app bundle
-#                   (default: ~/Applications, or /Applications if writable)
+#                   (default: /Applications if writable or passwordless sudo available,
+#                   otherwise ~/Applications)
 #   DOCX2MD_TRUST_APP — macOS only: set to "yes" to remove quarantine from the
 #                   installed .app bundle
 
@@ -84,21 +85,32 @@ DOWNLOAD_URL="$(printf '%s' "$RELEASE_JSON" \
 FILENAME="$(basename "$DOWNLOAD_URL")"
 
 # ── Resolve install directories ───────────────────────────────────────────────
+# Track whether the app-bundle destination requires sudo to write.
+APPS_DIR_NEEDS_SUDO=false
+
 if [ "$OS" = "Darwin" ]; then
-  # Prefer user-local ~/Applications (no sudo needed); only fall back to
-  # /Applications when writable or running as root.
+  # Resolution order: explicit APP_DIR > system /Applications (preferred, standard
+  # location visible in Finder/Launchpad) > user-local ~/Applications.
   if [ -n "${APP_DIR:-}" ]; then
     APPS_DIR="$APP_DIR"
-  elif [ -d "$HOME/Applications" ] || mkdir -p "$HOME/Applications" 2>/dev/null; then
-    APPS_DIR="$HOME/Applications"
+    mkdir -p "$APPS_DIR" 2>/dev/null || error "Failed to create APP_DIR: $APPS_DIR. Ensure the parent directory exists and you have write permission (or re-run with sudo)."
+    if [ -w "$APPS_DIR" ] || [ "$(id -u)" -eq 0 ]; then
+      :
+    elif sudo -n true 2>/dev/null; then
+      APPS_DIR_NEEDS_SUDO=true
+    else
+      error "APP_DIR is not writable: $APPS_DIR, and passwordless sudo is not available. Re-run with sudo or choose a writable directory."
+    fi
   elif [ -w "/Applications" ] || [ "$(id -u)" -eq 0 ]; then
     APPS_DIR="/Applications"
+  elif sudo -n true 2>/dev/null; then
+    APPS_DIR="/Applications"
+    APPS_DIR_NEEDS_SUDO=true
+  elif mkdir -p "$HOME/Applications" 2>/dev/null && [ -w "$HOME/Applications" ]; then
+    APPS_DIR="$HOME/Applications"
   else
-    error "Could not create '$HOME/Applications' and '/Applications' is not writable without sudo. Create '$HOME/Applications' or set APP_DIR to a writable directory and rerun the installer."
+    error "Could not install to '/Applications' (not writable, no passwordless sudo) and could not create '$HOME/Applications'. Create '$HOME/Applications' or set APP_DIR to a writable directory and rerun the installer."
   fi
-
-  mkdir -p "$APPS_DIR" 2>/dev/null || error "Failed to create app destination directory: $APPS_DIR"
-  [ -w "$APPS_DIR" ] || error "App destination is not writable: $APPS_DIR"
 fi
 
 # Binary / wrapper destination
@@ -157,8 +169,15 @@ case "$OS" in
     DEST_APP="$APPS_DIR/$APP_BUNDLE_NAME"
 
     info "Installing $APP_BUNDLE_NAME to $APPS_DIR/..."
-    [ -d "$DEST_APP" ] && rm -rf "$DEST_APP"
-    cp -r "$APP_BUNDLE" "$DEST_APP"
+    if [ "$APPS_DIR_NEEDS_SUDO" = true ]; then
+      if [ -e "$DEST_APP" ]; then
+        sudo rm -rf "$DEST_APP"
+      fi
+      sudo cp -r "$APP_BUNDLE" "$DEST_APP"
+    else
+      [ -d "$DEST_APP" ] && rm -rf "$DEST_APP"
+      cp -r "$APP_BUNDLE" "$DEST_APP"
+    fi
 
     # Preserve Gatekeeper protections by default; advanced users can opt in.
     if [ "${DOCX2MD_TRUST_APP:-}" = "yes" ]; then
@@ -195,6 +214,43 @@ EOF
     install_file "$TMP_FILE" "$DEST_BIN"
     chmod +x "$DEST_BIN" 2>/dev/null || true
     success "Binary installed at $DEST_BIN"
+
+    # ── Linux desktop integration ─────────────────────────────────────────────
+    # Create a .desktop entry so the app appears in the system application
+    # launcher (GNOME, KDE, XFCE, etc.) and advertises .docx support.
+    DESKTOP_DIR="$HOME/.local/share/applications"
+    ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
+    mkdir -p "$DESKTOP_DIR" "$ICON_DIR" 2>/dev/null || true
+
+    # Try to extract the application icon from the AppImage.
+    EXTRACT_DIR="$TMP_DIR/appimage-extract"
+    mkdir -p "$EXTRACT_DIR"
+    if (cd "$EXTRACT_DIR" && "$DEST_BIN" --appimage-extract ".DirIcon" 2>/dev/null) && \
+       [ -f "$EXTRACT_DIR/squashfs-root/.DirIcon" ]; then
+      cp "$EXTRACT_DIR/squashfs-root/.DirIcon" "$ICON_DIR/$APP_NAME.png" 2>/dev/null || true
+    fi
+
+    # Escape quotes/backslashes so Exec remains valid when INSTALL_DIR has spaces.
+    DESKTOP_EXEC_BIN="$(printf '%s' "$DEST_BIN" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+
+    DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+    cat > "$DESKTOP_FILE" <<DESKTOP_EOF
+[Desktop Entry]
+Name=$APP_NAME
+GenericName=Document Converter
+Comment=Convert DOCX files to Markdown
+Exec="$DESKTOP_EXEC_BIN" %f
+Icon=$APP_NAME
+Terminal=false
+Type=Application
+Categories=Office;Utility;
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;
+StartupNotify=true
+DESKTOP_EOF
+    chmod 644 "$DESKTOP_FILE" 2>/dev/null || true
+    update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    xdg-mime default "$APP_NAME.desktop" application/vnd.openxmlformats-officedocument.wordprocessingml.document 2>/dev/null || true
+    success "Desktop entry installed at $DESKTOP_FILE"
     ;;
 esac
 
@@ -212,9 +268,10 @@ echo ""
 printf '%s\n' "${BOLD}Launch the desktop app:${RESET}"
 if [ "$OS" = "Darwin" ]; then
   printf '  open "%s"\n' "$APPS_DIR/$APP_BUNDLE_NAME"
-  printf '  %s\n' "# or double-click it in Finder"
+  printf '  %s\n' "# or double-click it in Finder / Launchpad"
 else
   printf '  %s\n' "$BIN_DIR/$APP_NAME"
+  printf '  %s\n' "# or search for 'docx2md' in your application launcher"
 fi
 echo ""
 printf '%s\n' "${BOLD}CLI (Node.js required):${RESET}"
