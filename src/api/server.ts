@@ -106,10 +106,11 @@ function sanitizeAssetFilename(filename: string): string {
     throw new Error('Path traversal detected');
   }
   const basename = path.basename(filename);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(basename)) {
+  const safe = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safe || safe === '.' || safe === '..') {
     throw new Error('Invalid filename');
   }
-  return basename;
+  return safe;
 }
 
 function hasFilesInDirectory(dirPath: string): boolean {
