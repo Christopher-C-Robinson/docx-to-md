@@ -93,6 +93,15 @@ Before finalizing meaningful code changes:
 Note:
 - Integration tests may depend on external binaries (e.g., Pandoc).
 
+## PR Comment and Review Thread Workflow
+When working on a branch/PR that has GitHub comments (issue comments or review threads):
+- Read unresolved comments first and treat them as required tasks unless explicitly out of scope.
+- Implement the requested fix (or provide a clear technical reason when not applying it).
+- Reply on each addressed comment/thread with a short summary of what changed.
+- Mark the thread/comment as resolved after the fix is in place.
+- Do not leave addressed review comments open.
+- If permissions/tooling do not allow resolving threads, explicitly report which items remain open so a maintainer can resolve them.
+
 ## High-Signal Files for Agents
 - `src/core/convert.ts`
 - `src/core/types.ts`
