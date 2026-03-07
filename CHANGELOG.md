@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.10] – 2026-03-07
+
+### Added
+- add one-command cross-platform installer scripts
+- add code signing and notarization for seamless Windows/macOS installs
+
+### Fixed
+- fix invalid electron-builder.yml configuration schema
+- scope signing secrets by workflow target os
+
+### Changed
+- Merge pull request #65 from Christopher-C-Robinson/copilot/fix-electron-builder-schema
+- Keep mac notarization enabled in electron-builder config
+- Initial plan
+- v0.1.9 [skip ci]
+- Merge pull request #63 from Christopher-C-Robinson/copilot/add-unified-install-scripts
+- fix installer script review feedback
+- Initial plan
+- Merge pull request #61 from Christopher-C-Robinson/copilot/improve-installer-and-signing
+- Initial plan
+- Merge pull request #59 from Christopher-C-Robinson/add-copilot-instructions-and-agent-md-files
+- Adds PR review workflow guidelines to docs
+- Adds mirrored agent instruction docs for project tooling
+
 ## [0.1.9] – 2026-03-07
 
 ### Added
