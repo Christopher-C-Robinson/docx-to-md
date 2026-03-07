@@ -17,6 +17,55 @@
 
 ## Installation
 
+### One-command install (no signing hassle)
+
+The quickest way to get the desktop app on any platform — no code signing prompts,
+no admin rights, no manual extraction.
+
+#### macOS & Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | bash
+```
+
+What the script does:
+
+- Detects your OS and CPU architecture (macOS arm64/x64, Linux x86_64)
+- Downloads the latest pre-built release from GitHub
+- **macOS**: extracts the `.app` bundle to `~/Applications/` and removes the Gatekeeper quarantine flag — no "unidentified developer" dialog
+- **Linux**: copies the `.AppImage` to `~/.local/bin/` (or `/usr/local/bin/` if writable) and makes it executable
+- Creates a `docx2md` terminal launcher
+
+Override the install directories:
+
+```bash
+# Install binary to a custom directory
+INSTALL_DIR=~/bin curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | bash
+
+# macOS: install the .app to a custom location
+APP_DIR=/Applications INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.sh | bash
+```
+
+#### Windows (PowerShell)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.ps1 -UseBasicParsing | iex"
+```
+
+What the script does:
+
+- Downloads the latest portable `.exe` from GitHub (no installer wizard, no UAC prompt)
+- Copies it to `%LOCALAPPDATA%\docx-to-md\bin\docx2md.exe`
+- Adds that directory to your **user** PATH (no admin rights required)
+
+Override the install directory:
+
+```powershell
+$env:DOCX2MD_INSTALL_DIR = "$HOME\bin"; powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/Christopher-C-Robinson/docx-to-md/main/scripts/install.ps1 -UseBasicParsing | iex"
+```
+
+---
+
 ### Desktop Application (Windows & macOS)
 
 The recommended way to use docx-to-md on Windows and macOS is via the native desktop application built with Electron.
