@@ -41,8 +41,8 @@ export class MammothAdapter implements EngineAdapter {
     };
 
     if (options.mediaDir) {
-      const mediaDir = path.resolve(options.mediaDir);
-      const normalizedMediaDir = path.resolve(mediaDir);
+      const mediaDir = this.resolveMediaDirectory(options.mediaDir);
+      const normalizedMediaDir = mediaDir;
       let contentMap = new Map<string, string>();
 
       // Extract all media from the DOCX archive up-front so that images get
@@ -50,7 +50,8 @@ export class MammothAdapter implements EngineAdapter {
       // The returned `contentMap` is built during extraction so no extra
       // disk reads are needed to match images in the mammoth callback.
       try {
-        const { assets: extracted, warnings: extractWarnings, contentMap: extractedContentMap } = extractMedia(inputPath, mediaDir);
+        const { assets: extracted, warnings: extractWarnings, contentMap: extractedContentMap } =
+          extractMedia(inputPath, mediaDir);
         assets.push(...extracted);
         warnings.push(...extractWarnings);
         contentMap = extractedContentMap;
@@ -235,6 +236,18 @@ export class MammothAdapter implements EngineAdapter {
         return candidate;
       }
     }
+  }
+
+  private resolveMediaDirectory(mediaDir: string): string {
+    const resolved = path.resolve(mediaDir);
+
+    // Treat the resolved mediaDir as the sandbox root and ensure that
+    // it does not escape itself via any pathological input.
+    if (!this.isPathWithinDirectory(resolved, resolved)) {
+      throw new Error(`Unsafe media directory: ${mediaDir}`);
+    }
+
+    return resolved;
   }
 
   private isPathWithinDirectory(directory: string, candidate: string): boolean {
