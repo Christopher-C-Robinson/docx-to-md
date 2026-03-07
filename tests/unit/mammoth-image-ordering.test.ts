@@ -92,7 +92,7 @@ describe('MammothAdapter – deterministic image ordering', () => {
     return adapter.convert('/fake/input.docx', outputPath, { format: 'gfm', mediaDir });
   }
 
-  test('renames three images to sequential filenames in document flow order', async () => {
+  test('writes three images to sequential filenames in document flow order', async () => {
     const origPaths: Record<string, string> = {
       aaa: path.join(resolvedMediaDir, 'image5.png'),
       bbb: path.join(resolvedMediaDir, 'image1.png'),
@@ -105,15 +105,15 @@ describe('MammothAdapter – deterministic image ordering', () => {
       { base64: 'ccc' },
     ]);
 
-    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    expect(renameSync).toHaveBeenNthCalledWith(
-      1, path.join(resolvedMediaDir, 'image5.png'), path.join(resolvedMediaDir, 'image-01.png'),
+    const { writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(writeFileSync).toHaveBeenNthCalledWith(
+      1, path.join(resolvedMediaDir, 'image-01.png'), expect.any(Buffer),
     );
-    expect(renameSync).toHaveBeenNthCalledWith(
-      2, path.join(resolvedMediaDir, 'image1.png'), path.join(resolvedMediaDir, 'image-02.png'),
+    expect(writeFileSync).toHaveBeenNthCalledWith(
+      2, path.join(resolvedMediaDir, 'image-02.png'), expect.any(Buffer),
     );
-    expect(renameSync).toHaveBeenNthCalledWith(
-      3, path.join(resolvedMediaDir, 'image9.png'), path.join(resolvedMediaDir, 'image-03.png'),
+    expect(writeFileSync).toHaveBeenNthCalledWith(
+      3, path.join(resolvedMediaDir, 'image-03.png'), expect.any(Buffer),
     );
   });
 
@@ -143,12 +143,12 @@ describe('MammothAdapter – deterministic image ordering', () => {
     await runWithImages(origPaths, [
       { base64: 'aaa' }, // first occurrence  → image-01.png
       { base64: 'bbb' }, // first occurrence  → image-02.png
-      { base64: 'aaa' }, // duplicate         → should still be image-01.png (no new rename)
+      { base64: 'aaa' }, // duplicate         → should still be image-01.png (no new write)
     ]);
 
-    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    // renameSync should only be called twice (once per unique image)
-    expect(renameSync).toHaveBeenCalledTimes(2);
+    const { writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    // writeFileSync should only be called twice (once per unique image)
+    expect(writeFileSync).toHaveBeenCalledTimes(2);
   });
 
   test('preserves file extension from the extracted filename', async () => {
@@ -158,23 +158,28 @@ describe('MammothAdapter – deterministic image ordering', () => {
 
     await runWithImages(origPaths, [{ base64: 'jpg1', contentType: 'image/jpeg' }]);
 
-    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    expect(renameSync).toHaveBeenCalledWith(
-      path.join(resolvedMediaDir, 'photo.jpg'),
+    const { writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(writeFileSync).toHaveBeenCalledWith(
       path.join(resolvedMediaDir, 'image-01.jpg'),
+      expect.any(Buffer),
     );
   });
 
 
-  test('skips rename when source path already matches sequential destination', async () => {
+  test('skips write when source path already matches sequential destination', async () => {
     const origPaths: Record<string, string> = {
       aaa: path.join(resolvedMediaDir, 'image-01.png'),
     };
 
+    const { existsSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    (existsSync as jest.Mock).mockImplementation((candidate: fs.PathLike) =>
+      String(candidate) === path.join(resolvedMediaDir, 'image-01.png'),
+    );
+
     const result = await runWithImages(origPaths, [{ base64: 'aaa' }]);
 
-    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    expect(renameSync).not.toHaveBeenCalled();
+    const { writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(writeFileSync).not.toHaveBeenCalled();
     expect(result.assets).toContain(path.join(resolvedMediaDir, 'image-01.png'));
   });
 
@@ -191,16 +196,16 @@ describe('MammothAdapter – deterministic image ordering', () => {
 
     await runWithImages(origPaths, [{ base64: 'aaa' }, { base64: 'bbb' }]);
 
-    const { renameSync } = require('fs') as jest.Mocked<typeof import('fs')>;
-    expect(renameSync).toHaveBeenNthCalledWith(
+    const { writeFileSync } = require('fs') as jest.Mocked<typeof import('fs')>;
+    expect(writeFileSync).toHaveBeenNthCalledWith(
       1,
-      path.join(resolvedMediaDir, 'image5.png'),
       path.join(resolvedMediaDir, 'image-02.png'),
+      expect.any(Buffer),
     );
-    expect(renameSync).toHaveBeenNthCalledWith(
+    expect(writeFileSync).toHaveBeenNthCalledWith(
       2,
-      path.join(resolvedMediaDir, 'image6.png'),
       path.join(resolvedMediaDir, 'image-03.png'),
+      expect.any(Buffer),
     );
   });
 

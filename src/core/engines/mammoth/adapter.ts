@@ -60,9 +60,9 @@ export class MammothAdapter implements EngineAdapter {
       }
 
       let imageIndex = 0;
-      // Tracks base64 keys that have already been renamed so that duplicate
-      // appearances of the same image reuse the sequential name.
-      const renamedKeys = new Set<string>();
+      // Tracks base64 keys that have already been assigned so duplicates
+      // reuse the same sequential filename.
+      const assignedKeys = new Set<string>();
 
       const imageHandler = mammoth.images.imgElement((image) => {
         return image.read('base64').then((imageBase64) => {
@@ -72,19 +72,29 @@ export class MammothAdapter implements EngineAdapter {
             if (!safeExisting) {
               warnings.push(`Skipped unsafe media path from content map: ${existing}`);
             } else {
-              if (!renamedKeys.has(imageBase64)) {
-                // First encounter: rename to the next sequential filename,
-                // avoiding collisions with any existing files.
+              if (!assignedKeys.has(imageBase64)) {
+                // First encounter: write to the next sequential filename while
+                // preserving document order and avoiding collisions.
                 const ext = this.resolveImageExtension(safeExisting, image.contentType);
-                const newPath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
+                const newPath = this.nextAvailableImagePath(
+                  mediaDir,
+                  ext,
+                  () => ++imageIndex,
+                  safeExisting,
+                );
 
                 if (safeExisting !== newPath) {
-                  fs.renameSync(safeExisting, newPath);
-                  const idx = assets.indexOf(existing);
-                  if (idx !== -1) assets[idx] = newPath;
+                  fs.writeFileSync(newPath, Buffer.from(imageBase64, 'base64'));
                 }
 
-                renamedKeys.add(imageBase64);
+                const idx = assets.indexOf(existing);
+                if (idx !== -1) {
+                  assets[idx] = newPath;
+                } else if (!assets.includes(newPath)) {
+                  assets.push(newPath);
+                }
+
+                assignedKeys.add(imageBase64);
                 contentMap.set(imageBase64, newPath);
               }
               // contentMap is guaranteed to have a value for imageBase64 here: it
@@ -187,12 +197,57 @@ export class MammothAdapter implements EngineAdapter {
    * contentType to avoid building file paths from uncontrolled strings.
    */
   private resolveImageExtension(existingPath: string, contentType: string): string {
-    const existingExt = path.extname(existingPath);
-    if (existingExt) return existingExt;
+    switch (path.extname(existingPath).toLowerCase()) {
+      case '.png':
+        return '.png';
+      case '.jpg':
+        return '.jpg';
+      case '.jpeg':
+        return '.jpeg';
+      case '.gif':
+        return '.gif';
+      case '.bmp':
+        return '.bmp';
+      case '.webp':
+        return '.webp';
+      case '.tif':
+        return '.tif';
+      case '.tiff':
+        return '.tiff';
+      case '.svg':
+        return '.svg';
+      case '.emf':
+        return '.emf';
+      case '.wmf':
+        return '.wmf';
+      default:
+        break;
+    }
 
-    const typeSuffix = contentType.split('/')[1] ?? 'png';
-    const sanitized = typeSuffix.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return sanitized ? `.${sanitized}` : '.png';
+    switch (contentType.trim().toLowerCase()) {
+      case 'image/png':
+        return '.png';
+      case 'image/jpeg':
+        return '.jpeg';
+      case 'image/jpg':
+        return '.jpg';
+      case 'image/gif':
+        return '.gif';
+      case 'image/bmp':
+        return '.bmp';
+      case 'image/webp':
+        return '.webp';
+      case 'image/tiff':
+        return '.tiff';
+      case 'image/svg+xml':
+        return '.svg';
+      case 'image/emf':
+        return '.emf';
+      case 'image/wmf':
+        return '.wmf';
+      default:
+        return '.png';
+    }
   }
 
 
@@ -219,8 +274,14 @@ export class MammothAdapter implements EngineAdapter {
    * Generates the next sequential image filename under mediaDir and ensures
    * the resolved path remains within that directory.
    */
-  private nextAvailableImagePath(mediaDir: string, ext: string, nextIndex: () => number): string {
+  private nextAvailableImagePath(
+    mediaDir: string,
+    ext: string,
+    nextIndex: () => number,
+    currentPath?: string,
+  ): string {
     const normalizedMediaDir = path.resolve(mediaDir);
+    const normalizedCurrentPath = currentPath ? path.resolve(currentPath) : null;
 
     // Loop until we find a deterministic unused destination name.
     while (true) {
@@ -230,6 +291,10 @@ export class MammothAdapter implements EngineAdapter {
 
       if (!this.isPathWithinDirectory(normalizedMediaDir, candidate)) {
         throw new Error(`Unsafe media path generated: ${filename}`);
+      }
+
+      if (normalizedCurrentPath && candidate === normalizedCurrentPath) {
+        return candidate;
       }
 
       if (!fs.existsSync(candidate)) {
@@ -252,7 +317,7 @@ export class MammothAdapter implements EngineAdapter {
 
   private isPathWithinDirectory(directory: string, candidate: string): boolean {
     const relative = path.relative(path.resolve(directory), path.resolve(candidate));
-    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
   }
 
 }
