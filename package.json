@@ -1,6 +1,6 @@
 {
   "name": "docx-to-md",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Reliable DOCX to Markdown conversion with pluggable engine architecture",
   "main": "dist/core/index.js",
   "scripts": {

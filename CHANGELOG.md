@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] – 2026-03-07
+
+### Added
+- download markdown and media as zip
+- deterministic image ordering based on document flow
+- clean Word auto-generated accessibility alt text from images
+- render images in markdown preview by rewriting media paths to API URLs
+
+### Fixed
+- eliminate codeql path taint in mammoth rename flow
+- resolve codeql path warning and windows test paths
+- harden zip downloads and validate archive contents
+- harden mammoth image renaming path handling
+- keep markdown table cell images inline
+- rewrite preview image paths after markdown render
+- preserve inline image placement in markdown AST serializer
+- reset copy button label after clipboard failure with timeout
+
+### Changed
+- Merge pull request #46 from Christopher-C-Robinson/copilot/feat-deterministic-image-ordering
+- Improves upload cleanup with stricter validation
+- Improves DOCX upload handling and media asset ordering
+- Allow Windows short-name paths in DOCX input validation
+- Fix image filename sanitization to preserve 404 on missing assets
+- Merge main and harden extractMedia path validation
+- Improves session and asset path validation and sanitization
+- Writes images to sequential filenames for deterministic ordering
+- Potential fix for code scanning alert no. 27: Uncontrolled data used in path expression
+- Potential fix for code scanning alert no. 26: Uncontrolled data used in path expression
+- Merge pull request #58 from Christopher-C-Robinson/copilot/feat-download-markdown-and-media-zip
+- Merge pull request #56 from Christopher-C-Robinson/copilot/improve-inline-image-placement
+- Merge pull request #54 from Christopher-C-Robinson/copilot/improve-github-markdown-preview
+- Merge branch 'main' of https://github.com/Christopher-C-Robinson/docx-to-md into copilot/improve-github-markdown-preview
+- Reuse markdown-it renderer and disable typographer
+- Merge pull request #50 from Christopher-C-Robinson/copilot/fix-image-rendering-markdown
+- Merge pull request #48 from Christopher-C-Robinson/copilot/clean-alt-text-in-markdown
+- attach alt-text JSDoc to cleanAltText
+- Merge pull request #52 from Christopher-C-Robinson/copilot/add-copy-to-clipboard-button
+- replace marked with markdown-it for GitHub-compatible preview
+- add markdown-it.min.js vendor bundle
+- Initial plan
+- Initial plan
+- Initial plan
+- Initial plan
+- Initial plan
+- Initial plan
+- Initial plan
+
 ## [0.1.7] – 2026-03-06
 
 ### Fixed
