@@ -44,12 +44,12 @@ jobs:
 
     steps:
       - name: Checkout repository (full history)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -248,13 +248,13 @@ jobs:
 
     steps:
       - name: Checkout source at release tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
           ref: ${{ needs.check-and-version.outputs.new_tag }}
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -296,6 +296,7 @@ jobs:
           # WIN_CSC_KEY_PASSWORD – passphrase for the Windows .p12 certificate
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        shell: bash
         run: |
           [ -n "${WIN_CSC_LINK}" ] || unset WIN_CSC_LINK
           [ -n "${WIN_CSC_KEY_PASSWORD}" ] || unset WIN_CSC_KEY_PASSWORD
@@ -306,7 +307,7 @@ jobs:
         run: npm run ${{ matrix.target.script }}
 
       - name: Upload artifacts (${{ matrix.target.label }})
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target.id }}
           path: |
@@ -330,7 +331,7 @@ jobs:
 
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
