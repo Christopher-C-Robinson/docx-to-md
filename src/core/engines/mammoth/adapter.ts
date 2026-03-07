@@ -41,7 +41,7 @@ export class MammothAdapter implements EngineAdapter {
     };
 
     if (options.mediaDir) {
-      const mediaDir = path.resolve(options.mediaDir);
+      const mediaDir = this.resolveMediaDirectory(options.mediaDir);
       let contentMap = new Map<string, string>();
 
       // Extract all media from the DOCX archive up-front so that images get
@@ -49,7 +49,8 @@ export class MammothAdapter implements EngineAdapter {
       // The returned `contentMap` is built during extraction so no extra
       // disk reads are needed to match images in the mammoth callback.
       try {
-        const { assets: extracted, warnings: extractWarnings, contentMap: extractedContentMap } = extractMedia(inputPath, mediaDir);
+        const { assets: extracted, warnings: extractWarnings, contentMap: extractedContentMap } =
+          extractMedia(inputPath, mediaDir);
         assets.push(...extracted);
         warnings.push(...extractWarnings);
         contentMap = extractedContentMap;
@@ -57,20 +58,75 @@ export class MammothAdapter implements EngineAdapter {
         warnings.push(`Failed to pre-extract DOCX media: ${(err as Error).message}`);
       }
 
+      let imageIndex = 0;
+      // Tracks base64 keys that have already been assigned so duplicates
+      // reuse the same sequential filename.
+      const assignedKeys = new Set<string>();
+
       const imageHandler = mammoth.images.imgElement((image) => {
         return image.read('base64').then((imageBase64) => {
+          if (assignedKeys.has(imageBase64)) {
+            const assignedPath = contentMap.get(imageBase64);
+            if (assignedPath) {
+              return { src: path.relative(path.dirname(outputPath), assignedPath) };
+            }
+          }
+
           const existing = contentMap.get(imageBase64);
           if (existing) {
-            return { src: path.relative(path.dirname(outputPath), existing) };
+            const safeExistingPath = this.resolveExistingMediaPath(mediaDir, existing);
+            if (!safeExistingPath) {
+              warnings.push(`Skipped unsafe media path from content map: ${existing}`);
+            } else {
+              const existingFilename = path.basename(safeExistingPath);
+              // First encounter: move to the next sequential filename while
+              // preserving document order and avoiding collisions.
+              const ext = this.resolveImageExtension(existingFilename, image.contentType);
+              const newPath = this.nextAvailableImagePath(
+                mediaDir,
+                ext,
+                () => ++imageIndex,
+                existingFilename,
+              );
+
+              if (safeExistingPath !== newPath) {
+                if (fs.existsSync(safeExistingPath)) {
+                  fs.renameSync(safeExistingPath, newPath);
+                } else {
+                  // If the expected extracted file is missing, recreate it
+                  // directly from Mammoth's payload to keep output intact.
+                  fs.writeFileSync(newPath, Buffer.from(imageBase64, 'base64'));
+                }
+              }
+
+              const idx = assets.indexOf(existing);
+              if (idx !== -1) {
+                assets[idx] = newPath;
+              } else {
+                const safeIdx = assets.indexOf(safeExistingPath);
+                if (safeIdx !== -1) {
+                  assets[safeIdx] = newPath;
+                } else if (!assets.includes(newPath)) {
+                  assets.push(newPath);
+                }
+              }
+
+              assignedKeys.add(imageBase64);
+              contentMap.set(imageBase64, newPath);
+              return { src: path.relative(path.dirname(outputPath), newPath) };
+            }
           }
 
           // Fallback: image not found in the DOCX media directory (e.g. an
-          // embedded OLE object).  Write it with a safe generated name.
-          const ext = image.contentType.split('/')[1] ?? 'png';
-          const filename = `image-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-          const filepath = path.join(mediaDir, filename);
+          // embedded OLE object).  Write it with a safe sequential name.
+          const ext = this.resolveImageExtension('', image.contentType);
+          const filepath = this.nextAvailableImagePath(mediaDir, ext, () => ++imageIndex);
           fs.writeFileSync(filepath, Buffer.from(imageBase64, 'base64'));
-          assets.push(filepath);
+          if (!assets.includes(filepath)) {
+            assets.push(filepath);
+          }
+          assignedKeys.add(imageBase64);
+          contentMap.set(imageBase64, filepath);
           return { src: path.relative(path.dirname(outputPath), filepath) };
         });
       });
@@ -188,4 +244,135 @@ export class MammothAdapter implements EngineAdapter {
       .replace(/(<[^>]+)\s+on\w+\s*=\s*'[^']*'/gi, '$1')
       .replace(/(<[^>]+)\s+on\w+\s*=[^\s>]*/gi, '$1');
   }
+
+  /**
+   * Uses either an existing file extension or a safe extension derived from
+   * contentType to avoid building file paths from uncontrolled strings.
+   */
+  private resolveImageExtension(existingPath: string, contentType: string): string {
+    switch (path.extname(existingPath).toLowerCase()) {
+      case '.png':
+        return '.png';
+      case '.jpg':
+        return '.jpg';
+      case '.jpeg':
+        return '.jpeg';
+      case '.gif':
+        return '.gif';
+      case '.bmp':
+        return '.bmp';
+      case '.webp':
+        return '.webp';
+      case '.tif':
+        return '.tif';
+      case '.tiff':
+        return '.tiff';
+      case '.svg':
+        return '.svg';
+      case '.emf':
+        return '.emf';
+      case '.wmf':
+        return '.wmf';
+      default:
+        break;
+    }
+
+    switch (contentType.trim().toLowerCase()) {
+      case 'image/png':
+        return '.png';
+      case 'image/jpeg':
+        return '.jpeg';
+      case 'image/jpg':
+        return '.jpg';
+      case 'image/gif':
+        return '.gif';
+      case 'image/bmp':
+        return '.bmp';
+      case 'image/webp':
+        return '.webp';
+      case 'image/tiff':
+        return '.tiff';
+      case 'image/svg+xml':
+        return '.svg';
+      case 'image/emf':
+        return '.emf';
+      case 'image/wmf':
+        return '.wmf';
+      default:
+        return '.png';
+    }
+  }
+
+
+  private resolveExistingMediaFilename(existingPath: string): string | null {
+    const filename = path.basename(existingPath);
+    // Extracted DOCX media names are expected to be simple filenames.
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(filename)) {
+      return null;
+    }
+    return filename;
+  }
+
+  private resolveExistingMediaPath(mediaDir: string, existingPath: string): string | null {
+    const filename = this.resolveExistingMediaFilename(existingPath);
+    if (!filename) {
+      return null;
+    }
+    const candidate = path.resolve(mediaDir, filename);
+    if (!this.isPathWithinDirectory(mediaDir, candidate)) {
+      return null;
+    }
+    return candidate;
+  }
+
+  /**
+   * Generates the next sequential image filename under mediaDir and ensures
+   * the resolved path remains within that directory.
+   */
+  private nextAvailableImagePath(
+    mediaDir: string,
+    ext: string,
+    nextIndex: () => number,
+    currentFilename?: string,
+  ): string {
+    const normalizedMediaDir = path.resolve(mediaDir);
+    const normalizedCurrentFilename = currentFilename ? path.basename(currentFilename) : null;
+
+    // Loop until we find a deterministic unused destination name.
+    while (true) {
+      const index = nextIndex();
+      const filename = `image-${String(index).padStart(2, '0')}${ext}`;
+      const candidate = path.resolve(normalizedMediaDir, filename);
+
+      if (!this.isPathWithinDirectory(normalizedMediaDir, candidate)) {
+        throw new Error(`Unsafe media path generated: ${filename}`);
+      }
+
+      if (normalizedCurrentFilename && filename === normalizedCurrentFilename) {
+        return candidate;
+      }
+
+      if (!fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  private resolveMediaDirectory(mediaDir: string): string {
+    const resolved = path.resolve(mediaDir);
+
+    // Treat the resolved mediaDir as the sandbox root and ensure that
+    // it does not escape itself via any pathological input.
+    if (!this.isPathWithinDirectory(resolved, resolved)) {
+      throw new Error(`Unsafe media directory: ${mediaDir}`);
+    }
+
+    return resolved;
+  }
+
+  private isPathWithinDirectory(directory: string, candidate: string): boolean {
+    const relative = path.relative(path.resolve(directory), path.resolve(candidate));
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  }
+
 }

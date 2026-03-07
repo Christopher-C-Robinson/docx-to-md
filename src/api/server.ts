@@ -12,6 +12,19 @@ import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
+
+// Root directory under which all upload/session directories must reside.
+const UPLOAD_ROOT = path.resolve(path.join(os.tmpdir(), 'docx-to-markdown-sessions'));
+const SESSION_ID_PATTERN = /^[a-f0-9]{32}$/;
+
+function isPathWithinDirectory(rootDir: string, candidatePath: string): boolean {
+  const normalizedRoot = path.resolve(rootDir);
+  const normalizedCandidate = path.resolve(candidatePath);
+  if (process.platform === 'win32') {
+    return normalizedCandidate.toLowerCase().startsWith(normalizedRoot.toLowerCase() + path.sep);
+  }
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + path.sep);
+}
 /** Maximum number of conversion requests per IP within the rate-limit window. */
 export const RATE_LIMIT_MAX = 20;
 /** Rate-limit window in milliseconds (15 minutes). */
@@ -40,9 +53,6 @@ export interface ConvertResponse {
 }
 
 export interface SessionData {
-  tempRootDir: string;
-  markdownPath: string;
-  mediaDir: string;
   createdAt: number;
 }
 
@@ -54,13 +64,35 @@ function createSessionId(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
+function normalizeSessionId(value: unknown): string {
+  const sessionId = String(value ?? '').trim();
+  if (!SESSION_ID_PATTERN.test(sessionId)) {
+    throw new Error('Invalid session id');
+  }
+  return sessionId;
+}
+
+function sessionPaths(sessionId: string): { sessionDir: string; markdownPath: string; mediaDir: string } {
+  const safeSessionId = normalizeSessionId(sessionId);
+  const sessionDir = path.resolve(UPLOAD_ROOT, safeSessionId);
+  if (!isPathWithinDirectory(UPLOAD_ROOT, sessionDir)) {
+    throw new Error('Invalid session path');
+  }
+  return {
+    sessionDir,
+    markdownPath: path.join(sessionDir, 'output.md'),
+    mediaDir: path.join(sessionDir, 'media'),
+  };
+}
+
 /** Remove sessions older than SESSION_TTL_MS and delete their temp dirs */
 function cleanupSessions(): void {
   const cutoff = Date.now() - SESSION_TTL_MS;
   for (const [id, session] of sessions.entries()) {
     if (session.createdAt < cutoff) {
       try {
-        fs.rmSync(session.tempRootDir, { recursive: true, force: true });
+        const { sessionDir } = sessionPaths(id);
+        fs.rmSync(sessionDir, { recursive: true, force: true });
       } catch {
         // best effort
       }
@@ -69,32 +101,16 @@ function cleanupSessions(): void {
   }
 }
 
-/** Resolve a session-scoped path and verify it stays within the session dir */
-function resolveSessionPath(sessionDir: string, filename: string): string {
+function sanitizeAssetFilename(filename: string): string {
   if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
     throw new Error('Path traversal detected');
   }
   const basename = path.basename(filename);
   const safe = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const resolved = path.resolve(sessionDir, safe);
-  const sessionDirWithSep = sessionDir.endsWith(path.sep) ? sessionDir : sessionDir + path.sep;
-  if (!resolved.startsWith(sessionDirWithSep) && resolved !== sessionDir) {
-    throw new Error('Path traversal detected');
+  if (!safe || safe === '.' || safe === '..') {
+    throw new Error('Invalid filename');
   }
-  return resolved;
-}
-
-/** Validate that a stored session path is anchored under the session root directory. */
-function resolveStoredSessionPath(sessionDir: string, storedPath: string): string {
-  const resolvedSessionDir = path.resolve(sessionDir);
-  const resolvedStoredPath = path.resolve(storedPath);
-  const sessionDirWithSep = resolvedSessionDir.endsWith(path.sep)
-    ? resolvedSessionDir
-    : resolvedSessionDir + path.sep;
-  if (!resolvedStoredPath.startsWith(sessionDirWithSep)) {
-    throw new Error('Invalid session path');
-  }
-  return resolvedStoredPath;
+  return safe;
 }
 
 function hasFilesInDirectory(dirPath: string): boolean {
@@ -318,6 +334,7 @@ export function createServer(options?: {
  */
 export function createApp(): express.Application {
   const app = express();
+  fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 
   const convertLimiter = rateLimit({
     windowMs: APP_RATE_LIMIT_WINDOW_MS,
@@ -350,16 +367,35 @@ export function createApp(): express.Application {
         return;
       }
 
-      const uploadDir = req.file.destination;
-      const inputPath = req.file.path;
       const sessionId = createSessionId();
-      const sessionDir = uploadDir;
-      const outputPath = path.join(sessionDir, 'output.md');
-      const mediaDir = path.join(sessionDir, 'media');
+      const { sessionDir, markdownPath, mediaDir } = sessionPaths(sessionId);
+      const inputPath = req.file.path;
+      const uploadDirName = path.basename(String(req.file.destination ?? ''));
+      const uploadFileName = path.basename(String(req.file.filename ?? ''));
+
+      const cleanupUpload = (): void => {
+        if (!/^docx-upload-[a-z0-9-]+$/i.test(uploadDirName)) {
+          return;
+        }
+        if (!/^upload\.docx$/i.test(uploadFileName)) {
+          return;
+        }
+        try {
+          const resolvedInputDir = path.resolve(os.tmpdir(), uploadDirName);
+          if (isPathWithinDirectory(os.tmpdir(), resolvedInputDir)) {
+            const resolvedInputPath = path.resolve(resolvedInputDir, uploadFileName);
+            fs.rmSync(resolvedInputPath, { force: true });
+            fs.rmSync(resolvedInputDir, { recursive: true, force: true });
+          }
+        } catch {
+          // best effort
+        }
+      };
 
       try {
+        fs.mkdirSync(sessionDir, { recursive: true });
         const adapter = new MammothAdapter();
-        const result = await adapter.convert(inputPath, outputPath, {
+        const result = await adapter.convert(inputPath, markdownPath, {
           format: 'gfm',
           mediaDir,
         });
@@ -369,9 +405,6 @@ export function createApp(): express.Application {
           : [];
 
         sessions.set(sessionId, {
-          tempRootDir: sessionDir,
-          markdownPath: outputPath,
-          mediaDir,
           createdAt: Date.now(),
         });
 
@@ -386,7 +419,7 @@ export function createApp(): express.Application {
         });
       } catch (err) {
         try {
-          fs.rmSync(uploadDir, { recursive: true, force: true });
+          fs.rmSync(sessionDir, { recursive: true, force: true });
         } catch {
           // best effort
         }
@@ -399,67 +432,80 @@ export function createApp(): express.Application {
           error: 'Conversion failed due to an internal error. Please try again later.',
           errorId,
         });
+      } finally {
+        cleanupUpload();
       }
     }
   );
 
   app.get('/api/images/:sessionId/:filename', downloadLimiter, (req: Request, res: Response): void => {
-    const sessionId = String(req.params['sessionId']);
-    const filename = String(req.params['filename']);
-    const session = sessions.get(sessionId);
-    if (!session) {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    let filePath: string;
+    if (!sessions.has(sessionId)) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+    const filename = String(req.params['filename']);
+    let safeFilename: string;
     try {
-      filePath = resolveSessionPath(session.mediaDir, filename);
+      safeFilename = sanitizeAssetFilename(filename);
     } catch {
       res.status(400).json({ error: 'Invalid filename' });
       return;
     }
-    if (!fs.existsSync(filePath)) {
+    const { mediaDir } = sessionPaths(sessionId);
+    if (!fs.existsSync(mediaDir)) {
       res.status(404).json({ error: 'Image not found' });
       return;
     }
-    res.sendFile(filePath);
+    const availableFiles = fs.readdirSync(mediaDir);
+    if (!availableFiles.includes(safeFilename)) {
+      res.status(404).json({ error: 'Image not found' });
+      return;
+    }
+    res.sendFile(safeFilename, { root: mediaDir });
   });
 
   app.get('/api/download/markdown/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
-    const sessionId = String(req.params['sessionId']);
-    const session = sessions.get(sessionId);
-    if (!session) {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    let markdownPath: string;
-    try {
-      markdownPath = resolveStoredSessionPath(session.tempRootDir, session.markdownPath);
-    } catch {
-      res.status(400).json({ error: 'Invalid session data' });
+    if (!sessions.has(sessionId)) {
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
+
+    const { sessionDir, markdownPath } = sessionPaths(sessionId);
     if (!fs.existsSync(markdownPath)) {
       res.status(404).json({ error: 'Markdown file not found' });
       return;
     }
-    res.download(markdownPath, 'converted.md');
+    res.download('output.md', 'converted.md', { root: sessionDir });
   });
 
   app.get('/api/download/images/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
-    const sessionId = String(req.params['sessionId']);
-    const session = sessions.get(sessionId);
-    if (!session) {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    let mediaDir: string;
-    try {
-      mediaDir = resolveStoredSessionPath(session.tempRootDir, session.mediaDir);
-    } catch {
-      res.status(400).json({ error: 'Invalid session data' });
+    if (!sessions.has(sessionId)) {
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
+
+    const { mediaDir } = sessionPaths(sessionId);
     if (!fs.existsSync(mediaDir)) {
       res.status(404).json({ error: 'No images found for this session' });
       return;
@@ -471,21 +517,19 @@ export function createApp(): express.Application {
   });
 
   app.get('/api/download/zip/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
-    const sessionId = String(req.params['sessionId']);
-    const session = sessions.get(sessionId);
-    if (!session) {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    let markdownPath: string;
-    let mediaDir: string;
-    try {
-      markdownPath = resolveStoredSessionPath(session.tempRootDir, session.markdownPath);
-      mediaDir = resolveStoredSessionPath(session.tempRootDir, session.mediaDir);
-    } catch {
-      res.status(400).json({ error: 'Invalid session data' });
+    if (!sessions.has(sessionId)) {
+      res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
+
+    const { markdownPath, mediaDir } = sessionPaths(sessionId);
     if (!fs.existsSync(markdownPath)) {
       res.status(404).json({ error: 'Conversion output not found' });
       return;

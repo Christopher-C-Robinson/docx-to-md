@@ -23,6 +23,46 @@ interface CentralDirEntry {
   compressionMethod: number;
 }
 
+function isSupportedDocxFilename(filename: string): boolean {
+  // Accept Multer temp filenames (no extension) and regular .docx names.
+  return /^[a-z0-9][a-z0-9._() ~-]*$/i.test(filename);
+}
+
+function resolveDocxInputPath(docxPath: string): string {
+  const raw = String(docxPath).trim();
+  if (!raw || raw.includes('\0')) {
+    throw new Error('Invalid DOCX path');
+  }
+
+  const normalized = path.normalize(raw);
+  // Allow Windows 8.3 short-name segments (for example: RUNNER~1).
+  if (!/^[a-z0-9_./\\:() ~-]+$/i.test(normalized)) {
+    throw new Error('Unsupported characters in DOCX path');
+  }
+  if (/(^|[\\/])\.\.([\\/]|$)/.test(normalized)) {
+    throw new Error('Path traversal detected in DOCX path');
+  }
+
+  const resolved = path.resolve(normalized);
+  const filename = path.basename(resolved);
+  if (!isSupportedDocxFilename(filename)) {
+    throw new Error(`Unsupported DOCX filename: "${filename}"`);
+  }
+
+  const realPath = fs.realpathSync(resolved);
+  const realFilename = path.basename(realPath);
+  if (!isSupportedDocxFilename(realFilename)) {
+    throw new Error(`Unsupported DOCX filename: "${realFilename}"`);
+  }
+
+  const stat = fs.statSync(realPath);
+  if (!stat.isFile()) {
+    throw new Error(`DOCX path is not a file: "${realPath}"`);
+  }
+
+  return realPath;
+}
+
 export interface MediaExtractionResult {
   /** Absolute paths of files written to disk. */
   assets: string[];
@@ -154,6 +194,7 @@ function decompressEntry(buf: Buffer, entry: CentralDirEntry): Buffer {
  */
 export function extractMedia(docxPath: string, mediaDir: string): MediaExtractionResult {
   const resolvedMediaDir = path.resolve(mediaDir);
+  const safeDocxPath = resolveDocxInputPath(docxPath);
   const warnings: string[] = [];
   const assets: string[] = [];
   const contentMap = new Map<string, string>();
@@ -161,13 +202,13 @@ export function extractMedia(docxPath: string, mediaDir: string): MediaExtractio
 
   fs.mkdirSync(resolvedMediaDir, { recursive: true });
 
-  const buf = fs.readFileSync(docxPath);
+  const buf = fs.readFileSync(safeDocxPath);
 
   let entries: CentralDirEntry[];
   try {
     entries = parseMediaEntries(buf);
   } catch (err) {
-    throw new Error(`Failed to read DOCX archive at "${docxPath}": ${(err as Error).message}`);
+    throw new Error(`Failed to read DOCX archive at "${safeDocxPath}": ${(err as Error).message}`);
   }
 
   for (const entry of entries) {
