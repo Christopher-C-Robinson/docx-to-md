@@ -28,9 +28,8 @@ mac:
   # while still running under the Hardened Runtime sandbox.
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Set to false to disable electron-builder's built-in notarization.
-  # Notarization can be handled externally via @electron/notarize if needed.
-  notarize: false
+  # Keep electron-builder's notarization integration enabled by default.
+  # Notarization runs automatically when Apple notarization env vars are set.
   target:
     - target: dmg
       arch:
