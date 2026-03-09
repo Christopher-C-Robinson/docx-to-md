@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout repository (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -178,7 +178,7 @@ jobs:
 
     steps:
       - name: Checkout source at release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
           ref: ${{ needs.check-and-version.outputs.new_tag }}
@@ -296,7 +296,7 @@ jobs:
           fi
 
       - name: Checkout repository for changelog update
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: main
