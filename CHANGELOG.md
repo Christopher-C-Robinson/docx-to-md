@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.15] – 2026-03-10
+
+### Fixed
+- use resolveWithSymlinks helper to handle both existing and non-existing paths
+- resolve targetPath via realpathSync in isPathWithinDirectory
+- break req.file.path taint chain using diskStorage + WeakMap
+- remove duplicate isPathWithinDirectory from auto-fix commit
+- replace sh-ulimit with prlimit and remove path from warn log
+- remediate CodeQL path injection and shell injection security alerts
+
+### Changed
+- Merge pull request #77 from Christopher-C-Robinson/copilot/remediate-codeql-security-alerts
+- Potential fix for code scanning alert no. 33: Uncontrolled data used in path expression
+- Initial plan
+
 ## [0.1.14] – 2026-03-10
 
 ### Changed
