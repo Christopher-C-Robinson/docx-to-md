@@ -12,10 +12,10 @@ import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 /**
  * Returns true if `targetPath` resolves to a location within `rootDir`.
- * Uses `path.resolve` for lexical normalisation so it works even when
- * `targetPath` does not yet exist on disk.  The root directory is
- * additionally resolved through `fs.realpathSync` when available (so
- * symlinked tmp dirs, e.g. on macOS, are handled correctly).
+ * Both paths are resolved through `fs.realpathSync` when available (so
+ * symlinked tmp dirs, e.g. on macOS where /tmp -> /private/tmp, are handled
+ * correctly for existing paths).  Falls back to `path.resolve` for paths that
+ * do not yet exist on disk (e.g. session directories before creation).
  */
 function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
   let resolvedRoot: string;
@@ -24,7 +24,12 @@ function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
   } catch {
     resolvedRoot = path.resolve(rootDir);
   }
-  const normalizedTarget = path.resolve(targetPath);
+  let normalizedTarget: string;
+  try {
+    normalizedTarget = fs.realpathSync(targetPath);
+  } catch {
+    normalizedTarget = path.resolve(targetPath);
+  }
   if (process.platform === 'win32') {
     const rootLower = resolvedRoot.toLowerCase();
     const targetLower = normalizedTarget.toLowerCase();
