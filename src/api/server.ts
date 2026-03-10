@@ -11,25 +11,42 @@ import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 /**
+ * Resolves a path through symlinks, handling the case where the path does not
+ * yet exist on disk (e.g. a session directory before it is created).
+ *
+ * Strategy:
+ *   1. Try `fs.realpathSync(p)` — succeeds for existing paths (resolves all
+ *      symlinks, e.g. /var/folders → /private/var/folders on macOS).
+ *   2. If the path does not exist, try `fs.realpathSync(parent)` and append
+ *      the basename — works for paths whose parent directory already exists.
+ *   3. Fall back to `path.resolve(p)` for fully non-existent paths.
+ *
+ * This ensures that both an existing file (upload path) and a yet-to-be-
+ * created directory (session dir) are normalised consistently against a root
+ * that has already been resolved through its own symlinks.
+ */
+function resolveWithSymlinks(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    try {
+      const parent = fs.realpathSync(path.dirname(p));
+      return path.join(parent, path.basename(p));
+    } catch {
+      return path.resolve(p);
+    }
+  }
+}
+
+/**
  * Returns true if `targetPath` resolves to a location within `rootDir`.
- * Both paths are resolved through `fs.realpathSync` when available (so
- * symlinked tmp dirs, e.g. on macOS where /tmp -> /private/tmp, are handled
- * correctly for existing paths).  Falls back to `path.resolve` for paths that
- * do not yet exist on disk (e.g. session directories before creation).
+ * Uses `resolveWithSymlinks` so that symlinked temp dirs on macOS
+ * (e.g. /tmp → /private/tmp) are handled correctly for both existing and
+ * not-yet-existing paths.
  */
 function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
-  let resolvedRoot: string;
-  try {
-    resolvedRoot = fs.realpathSync(rootDir);
-  } catch {
-    resolvedRoot = path.resolve(rootDir);
-  }
-  let normalizedTarget: string;
-  try {
-    normalizedTarget = fs.realpathSync(targetPath);
-  } catch {
-    normalizedTarget = path.resolve(targetPath);
-  }
+  const resolvedRoot = resolveWithSymlinks(rootDir);
+  const normalizedTarget = resolveWithSymlinks(targetPath);
   if (process.platform === 'win32') {
     const rootLower = resolvedRoot.toLowerCase();
     const targetLower = normalizedTarget.toLowerCase();
