@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.14] – 2026-03-10
+
+### Changed
+- Merge pull request #72 from Christopher-C-Robinson/dependabot/github_actions/actions/upload-artifact-7
+- Merge pull request #73 from Christopher-C-Robinson/dependabot/github_actions/actions/setup-node-6
+- Merge pull request #74 from Christopher-C-Robinson/dependabot/github_actions/actions/download-artifact-8
+- Merge pull request #75 from Christopher-C-Robinson/dependabot/github_actions/actions/checkout-6
+- bump actions/checkout from 4 to 6
+- bump actions/download-artifact from 4 to 8
+- bump actions/setup-node from 4 to 6
+- bump actions/upload-artifact from 4 to 7
+
 ## [0.1.13] – 2026-03-07
 
 ### Added
