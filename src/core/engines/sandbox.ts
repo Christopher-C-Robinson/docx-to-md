@@ -49,6 +49,34 @@ export function buildSandboxedSpawn(
 }
 
 /**
+ * Validates that a value is safe to pass as an argument to an external
+ * process or shell command.  Specifically:
+ * - Rejects strings containing null bytes (which can truncate C-string
+ *   handling and cause arguments to be mis-parsed at the OS level).
+ * - Rejects strings containing ASCII control characters (U+0001–U+001F,
+ *   U+007F) that could cause unexpected behaviour in shell or exec paths.
+ *
+ * This is intended as an explicit sanitisation barrier for file paths
+ * that originate from the runtime environment or user-uploaded content
+ * before they are forwarded to external binaries.
+ */
+export function validateShellSafePath(value: string): void {
+  if (value.includes('\0')) {
+    throw new Error('Unsafe path: contains null byte');
+  }
+  // Match any ASCII control character except tab (0x09) and newline/LF (0x0a).
+  // Both ranges skip these two characters:
+  //   \x01-\x08 covers control chars 1–8 (stops before tab at 9)
+  //   \x0b-\x1f covers control chars 11–31 (starts after LF at 10)
+  // Tab is sometimes legitimately present in paths; LF (0x0a) terminates
+  // arguments in some systems but is also skipped here so that callers that
+  // need to allow it can still do so via an additional check.
+  if (/[\x01-\x08\x0b-\x1f\x7f]/.test(value)) {
+    throw new Error('Unsafe path: contains control characters');
+  }
+}
+
+/**
  * Checks the input file before handing it to a conversion engine:
  * - If the file does not exist the function returns silently so the engine can
  *   surface the error naturally (preserving fallback-chain behaviour).

@@ -8,6 +8,7 @@ import {
   MAX_STDERR_BYTES,
   buildSandboxedSpawn,
   validateInputFile,
+  validateShellSafePath,
 } from '../sandbox';
 
 const PANDOC_TIMEOUT_MS = 60_000;
@@ -46,6 +47,10 @@ export class PandocAdapter implements EngineAdapter {
     const timeout = options.timeout ?? PANDOC_TIMEOUT_MS;
 
     validateInputFile(inputPath, options.maxFileSizeBytes);
+
+    // Validate paths are shell-safe before forwarding to the external binary.
+    validateShellSafePath(inputPath);
+    validateShellSafePath(outputPath);
 
     const cmd: string[] = ['-f', 'docx', '-t', format];
 
