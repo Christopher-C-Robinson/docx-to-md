@@ -12,25 +12,25 @@ import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
 /**
  * Returns true if `targetPath` resolves to a location within `rootDir`.
- * Both paths are canonicalized (including symlink resolution) before comparison.
+ * Uses `path.resolve` for lexical normalisation so it works even when
+ * `targetPath` does not yet exist on disk.  The root directory is
+ * additionally resolved through `fs.realpathSync` when available (so
+ * symlinked tmp dirs, e.g. on macOS, are handled correctly).
  */
 function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
+  let resolvedRoot: string;
   try {
-    const rootReal = fs.realpathSync(rootDir);
-    const resolvedTarget = path.resolve(rootReal, targetPath);
-    const targetReal = fs.realpathSync(resolvedTarget);
-
-    if (targetReal === rootReal) {
-      return true;
-    }
-
-    const rootWithSep =
-      rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep;
-    return targetReal.startsWith(rootWithSep);
+    resolvedRoot = fs.realpathSync(rootDir);
   } catch {
-    // If either path cannot be resolved, treat it as outside the directory.
-    return false;
+    resolvedRoot = path.resolve(rootDir);
   }
+  const normalizedTarget = path.resolve(targetPath);
+  if (process.platform === 'win32') {
+    const rootLower = resolvedRoot.toLowerCase();
+    const targetLower = normalizedTarget.toLowerCase();
+    return targetLower === rootLower || targetLower.startsWith(rootLower + path.sep);
+  }
+  return normalizedTarget === resolvedRoot || normalizedTarget.startsWith(resolvedRoot + path.sep);
 }
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -40,14 +40,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
 const UPLOAD_ROOT = path.resolve(path.join(os.tmpdir(), 'docx-to-markdown-sessions'));
 const SESSION_ID_PATTERN = /^[a-f0-9]{32}$/;
 
-function isPathWithinDirectory(rootDir: string, candidatePath: string): boolean {
-  const normalizedRoot = path.resolve(rootDir);
-  const normalizedCandidate = path.resolve(candidatePath);
-  if (process.platform === 'win32') {
-    return normalizedCandidate.toLowerCase().startsWith(normalizedRoot.toLowerCase() + path.sep);
-  }
-  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + path.sep);
-}
+
 /** Maximum number of conversion requests per IP within the rate-limit window. */
 export const RATE_LIMIT_MAX = 20;
 /** Rate-limit window in milliseconds (15 minutes). */
