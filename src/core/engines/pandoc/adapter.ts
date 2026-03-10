@@ -48,7 +48,8 @@ export class PandocAdapter implements EngineAdapter {
 
     validateInputFile(inputPath, options.maxFileSizeBytes);
 
-    // Validate paths are shell-safe before forwarding to the external binary.
+    // Reject paths containing null bytes or control characters before they are
+    // forwarded to prlimit / the external binary.
     validateShellSafePath(inputPath);
     validateShellSafePath(outputPath);
 

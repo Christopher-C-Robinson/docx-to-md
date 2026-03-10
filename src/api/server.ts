@@ -235,12 +235,12 @@ export function createServer(options?: {
         try {
           // Validate that the multer-provided upload path is contained within
           // the expected system temp directory before deleting it.  If the
-          // path is outside that directory, skip deletion and log a warning so
-          // operators can detect configuration issues or traversal attempts.
+          // path is outside that directory, skip deletion and emit a warning
+          // (without the path, to avoid logging user-controlled data).
           if (isPathWithinDirectory(os.tmpdir(), uploadedPath)) {
             fs.rmSync(uploadedPath, { force: true });
           } else {
-            console.warn(`[security] Upload path is outside tmpdir, skipping deletion: ${uploadedPath}`);
+            console.warn('[security] Skipping upload file deletion: path is outside tmpdir.');
           }
           fs.rmSync(tmpDir, { recursive: true, force: true });
         } catch {

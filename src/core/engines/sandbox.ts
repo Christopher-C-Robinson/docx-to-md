@@ -22,12 +22,22 @@ export interface ResourceLimits {
 }
 
 /**
- * Wraps `cmd` + `args` in a POSIX shell that applies `ulimit` resource limits
- * before exec-ing the real command.  Returns the original command unchanged on
- * non-Linux platforms so behaviour is unaffected outside Docker / CI.
+ * Wraps `cmd` + `args` with `prlimit` resource limits on Linux.
+ * Returns the original command unchanged on non-Linux platforms so
+ * behaviour is unaffected outside Docker / CI.
  *
- * The `exec` replaces the shell process so signals (e.g. SIGKILL from the
- * wall-clock timer) reach the actual conversion binary directly.
+ * **Dependency:** `prlimit` is provided by the `util-linux` package.  This
+ * package is marked `Priority: required` on Debian/Ubuntu and is present in
+ * the `node:20-slim` Docker base image used by this project.  Deployments on
+ * other Linux distributions must ensure `util-linux` (or a package supplying
+ * the `prlimit` binary) is installed.  If `prlimit` is unavailable the child
+ * process will fail with ENOENT, causing the conversion to be rejected.
+ *
+ * Using `prlimit` applies RLIMIT_AS and RLIMIT_CPU limits without spawning a
+ * shell, so file path arguments are never interpreted by a shell interpreter.
+ * Signals (e.g. SIGKILL from the wall-clock timer) reach the conversion
+ * binary directly because prlimit exec-replaces itself with the target
+ * process.
  */
 export function buildSandboxedSpawn(
   cmd: string,
@@ -38,14 +48,13 @@ export function buildSandboxedSpawn(
     return [cmd, args];
   }
 
-  const memKb = limits.memLimitMb * 1024;
+  // prlimit --as sets the virtual-memory (RLIMIT_AS) limit in bytes;
+  // --cpu sets the CPU-time (RLIMIT_CPU) limit in seconds.
+  // The '--' separator ensures that cmd and args are never mistaken for
+  // prlimit options, even if a path begins with '-'.
+  const memBytes = limits.memLimitMb * 1024 * 1024;
   const cpuSecs = limits.cpuLimitSecs;
-
-  // POSIX sh built-in; both limits are applied as separate invocations for
-  // compatibility with dash, and execution only proceeds if all succeed.
-  // "$0" is set to cmd and "$@" expands to the remaining positional args.
-  const script = `ulimit -v ${memKb} && ulimit -t ${cpuSecs} && exec "$0" "$@"`;
-  return ['sh', ['-c', script, cmd, ...args]];
+  return ['prlimit', [`--as=${memBytes}`, `--cpu=${cpuSecs}`, '--', cmd, ...args]];
 }
 
 /**

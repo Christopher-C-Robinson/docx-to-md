@@ -102,34 +102,33 @@ describe('buildSandboxedSpawn', () => {
     });
   });
 
-  test('wraps command in sh with ulimit on Linux', () => {
+  test('wraps command with prlimit on Linux (no shell)', () => {
     withPlatform('linux', () => {
       const [cmd, args] = buildSandboxedSpawn('pandoc', ['-f', 'docx'], limits);
-      expect(cmd).toBe('sh');
-      expect(args[0]).toBe('-c');
-      // Script must contain both ulimit directives and exec the real binary.
-      expect(args[1]).toMatch(/ulimit -v \d+ && ulimit -t \d+/);
-      expect(args[1]).toContain('exec "$0" "$@"');
-      // Original command/args are passed as positional parameters.
-      expect(args[2]).toBe('pandoc');
-      expect(args).toContain('-f');
-      expect(args).toContain('docx');
+      expect(cmd).toBe('prlimit');
+      // '--' separator must appear so cmd is never mistaken for a prlimit option.
+      expect(args).toContain('--');
+      const sepIdx = args.indexOf('--');
+      // Real command and its args follow the separator.
+      expect(args[sepIdx + 1]).toBe('pandoc');
+      expect(args.slice(sepIdx + 2)).toEqual(['-f', 'docx']);
     });
   });
 
-  test('embeds the correct memory (KB) and CPU (seconds) values', () => {
+  test('embeds the correct memory (bytes) and CPU (seconds) values', () => {
     withPlatform('linux', () => {
       const [, args] = buildSandboxedSpawn('soffice', [], { memLimitMb: 1024, cpuLimitSecs: 300 });
-      const script = args[1] as string;
-      // 1024 MB → 1 048 576 KB
-      expect(script).toContain(`ulimit -v ${1024 * 1024} && ulimit -t 300`);
+      // 1024 MB → 1 073 741 824 bytes
+      expect(args).toContain(`--as=${1024 * 1024 * 1024}`);
+      expect(args).toContain('--cpu=300');
     });
   });
 
-  test('uses exec so the shell is replaced by the real process', () => {
+  test('does not spawn a shell interpreter on Linux', () => {
     withPlatform('linux', () => {
-      const [, args] = buildSandboxedSpawn('pandoc', [], limits);
-      expect(args[1]).toMatch(/&&\s*exec /);
+      const [cmd] = buildSandboxedSpawn('pandoc', [], limits);
+      expect(cmd).not.toBe('sh');
+      expect(cmd).not.toBe('bash');
     });
   });
 });
