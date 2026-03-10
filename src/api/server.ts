@@ -10,6 +10,29 @@ import { resolveEngine } from '../core/engines/registry';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
+/**
+ * Returns true if `targetPath` resolves to a location within `rootDir`.
+ * Both paths are canonicalized (including symlink resolution) before comparison.
+ */
+function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
+  try {
+    const rootReal = fs.realpathSync(rootDir);
+    const resolvedTarget = path.resolve(rootReal, targetPath);
+    const targetReal = fs.realpathSync(resolvedTarget);
+
+    if (targetReal === rootReal) {
+      return true;
+    }
+
+    const rootWithSep =
+      rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep;
+    return targetReal.startsWith(rootWithSep);
+  } catch {
+    // If either path cannot be resolved, treat it as outside the directory.
+    return false;
+  }
+}
+
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
 
