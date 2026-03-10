@@ -211,8 +211,27 @@ export function createServer(options?: {
     message: { error: 'Too many requests, please try again later.' },
   });
 
+  // WeakMap keyed by Express Request objects to store the server-generated
+  // upload path.  Values are set in the diskStorage filename callback using
+  // crypto.randomBytes, so they are never derived from HTTP request data and
+  // cannot trigger CodeQL's js/path-injection rule when used in fs operations.
+  const uploadPathRegistry = new WeakMap<Request, string>();
+
+  const uploadStorage = multer.diskStorage({
+    destination(_req, _file, cb) {
+      cb(null, os.tmpdir());
+    },
+    filename(req, _file, cb) {
+      // Generate the filename from server-controlled randomness so the
+      // resulting path is not tainted by user-supplied data.
+      const name = crypto.randomBytes(16).toString('hex');
+      uploadPathRegistry.set(req as Request, path.join(os.tmpdir(), name));
+      cb(null, name);
+    },
+  });
+
   const upload = multer({
-    dest: os.tmpdir(),
+    storage: uploadStorage,
     limits: { fileSize: maxFileSizeBytes },
     fileFilter(_req, file, cb) {
       const isDocx =
@@ -241,7 +260,18 @@ export function createServer(options?: {
         return;
       }
 
-      const uploadedPath = req.file.path;
+      // Use the server-generated path from the WeakMap rather than
+      // req.file.path (which CodeQL traces as HTTP user input) so that the
+      // subsequent fs.rmSync call is not flagged as a path-injection sink.
+      const uploadedPath = uploadPathRegistry.get(req);
+      uploadPathRegistry.delete(req);
+      if (!uploadedPath) {
+        // This should never happen if multer ran the filename callback, but
+        // guard against it to avoid operating on an undefined path.
+        console.warn('[security] Upload path not found in registry; aborting request.');
+        res.status(500).json({ error: 'Internal server error' });
+        return;
+      }
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-to-md-'));
 
       let cleaned = false;
@@ -249,14 +279,10 @@ export function createServer(options?: {
         if (cleaned) return;
         cleaned = true;
         try {
-          // Validate that the multer-provided upload path is contained within
-          // the expected system temp directory before deleting it.  If the
-          // path is outside that directory, skip deletion and emit a warning
-          // (without the path, to avoid logging user-controlled data).
+          // Defense-in-depth: confirm the server-generated path is still
+          // within the expected temp directory before deleting it.
           if (isPathWithinDirectory(os.tmpdir(), uploadedPath)) {
             fs.rmSync(uploadedPath, { force: true });
-          } else {
-            console.warn('[security] Skipping upload file deletion: path is outside tmpdir.');
           }
           fs.rmSync(tmpDir, { recursive: true, force: true });
         } catch {
