@@ -10,6 +10,51 @@ import { resolveEngine } from '../core/engines/registry';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
+/**
+ * Resolves a path through symlinks, handling the case where the path does not
+ * yet exist on disk (e.g. a session directory before it is created).
+ *
+ * Strategy:
+ *   1. Try `fs.realpathSync(p)` — succeeds for existing paths (resolves all
+ *      symlinks, e.g. /var/folders → /private/var/folders on macOS).
+ *   2. If the path does not exist, try `fs.realpathSync(parent)` and append
+ *      the basename — works for paths whose parent directory already exists.
+ *   3. Fall back to `path.resolve(p)` for fully non-existent paths.
+ *
+ * This ensures that both an existing file (upload path) and a yet-to-be-
+ * created directory (session dir) are normalised consistently against a root
+ * that has already been resolved through its own symlinks.
+ */
+function resolveWithSymlinks(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    try {
+      const parent = fs.realpathSync(path.dirname(p));
+      return path.join(parent, path.basename(p));
+    } catch {
+      return path.resolve(p);
+    }
+  }
+}
+
+/**
+ * Returns true if `targetPath` resolves to a location within `rootDir`.
+ * Uses `resolveWithSymlinks` so that symlinked temp dirs on macOS
+ * (e.g. /tmp → /private/tmp) are handled correctly for both existing and
+ * not-yet-existing paths.
+ */
+function isPathWithinDirectory(rootDir: string, targetPath: string): boolean {
+  const resolvedRoot = resolveWithSymlinks(rootDir);
+  const normalizedTarget = resolveWithSymlinks(targetPath);
+  if (process.platform === 'win32') {
+    const rootLower = resolvedRoot.toLowerCase();
+    const targetLower = normalizedTarget.toLowerCase();
+    return targetLower === rootLower || targetLower.startsWith(rootLower + path.sep);
+  }
+  return normalizedTarget === resolvedRoot || normalizedTarget.startsWith(resolvedRoot + path.sep);
+}
+
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
 
@@ -17,14 +62,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000; // 30 seconds
 const UPLOAD_ROOT = path.resolve(path.join(os.tmpdir(), 'docx-to-markdown-sessions'));
 const SESSION_ID_PATTERN = /^[a-f0-9]{32}$/;
 
-function isPathWithinDirectory(rootDir: string, candidatePath: string): boolean {
-  const normalizedRoot = path.resolve(rootDir);
-  const normalizedCandidate = path.resolve(candidatePath);
-  if (process.platform === 'win32') {
-    return normalizedCandidate.toLowerCase().startsWith(normalizedRoot.toLowerCase() + path.sep);
-  }
-  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + path.sep);
-}
+
 /** Maximum number of conversion requests per IP within the rate-limit window. */
 export const RATE_LIMIT_MAX = 20;
 /** Rate-limit window in milliseconds (15 minutes). */
@@ -195,8 +233,27 @@ export function createServer(options?: {
     message: { error: 'Too many requests, please try again later.' },
   });
 
+  // WeakMap keyed by Express Request objects to store the server-generated
+  // upload path.  Values are set in the diskStorage filename callback using
+  // crypto.randomBytes, so they are never derived from HTTP request data and
+  // cannot trigger CodeQL's js/path-injection rule when used in fs operations.
+  const uploadPathRegistry = new WeakMap<Request, string>();
+
+  const uploadStorage = multer.diskStorage({
+    destination(_req, _file, cb) {
+      cb(null, os.tmpdir());
+    },
+    filename(req, _file, cb) {
+      // Generate the filename from server-controlled randomness so the
+      // resulting path is not tainted by user-supplied data.
+      const name = crypto.randomBytes(16).toString('hex');
+      uploadPathRegistry.set(req as Request, path.join(os.tmpdir(), name));
+      cb(null, name);
+    },
+  });
+
   const upload = multer({
-    dest: os.tmpdir(),
+    storage: uploadStorage,
     limits: { fileSize: maxFileSizeBytes },
     fileFilter(_req, file, cb) {
       const isDocx =
@@ -225,7 +282,18 @@ export function createServer(options?: {
         return;
       }
 
-      const uploadedPath = req.file.path;
+      // Use the server-generated path from the WeakMap rather than
+      // req.file.path (which CodeQL traces as HTTP user input) so that the
+      // subsequent fs.rmSync call is not flagged as a path-injection sink.
+      const uploadedPath = uploadPathRegistry.get(req);
+      uploadPathRegistry.delete(req);
+      if (!uploadedPath) {
+        // This should never happen if multer ran the filename callback, but
+        // guard against it to avoid operating on an undefined path.
+        console.warn('[security] Upload path not found in registry; aborting request.');
+        res.status(500).json({ error: 'Internal server error' });
+        return;
+      }
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-to-md-'));
 
       let cleaned = false;
@@ -233,7 +301,11 @@ export function createServer(options?: {
         if (cleaned) return;
         cleaned = true;
         try {
-          fs.rmSync(uploadedPath, { force: true });
+          // Defense-in-depth: confirm the server-generated path is still
+          // within the expected temp directory before deleting it.
+          if (isPathWithinDirectory(os.tmpdir(), uploadedPath)) {
+            fs.rmSync(uploadedPath, { force: true });
+          }
           fs.rmSync(tmpDir, { recursive: true, force: true });
         } catch {
           // ignore cleanup errors

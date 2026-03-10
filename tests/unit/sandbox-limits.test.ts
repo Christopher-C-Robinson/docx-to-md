@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { MAX_INPUT_BYTES, MAX_STDERR_BYTES, buildSandboxedSpawn, validateInputFile } from '../../src/core/engines/sandbox';
+import { MAX_INPUT_BYTES, MAX_STDERR_BYTES, buildSandboxedSpawn, validateInputFile, validateShellSafePath } from '../../src/core/engines/sandbox';
 import { PandocAdapter } from '../../src/core/engines/pandoc/adapter';
 import { LibreOfficeAdapter } from '../../src/core/engines/libreoffice/adapter';
 
@@ -102,34 +102,33 @@ describe('buildSandboxedSpawn', () => {
     });
   });
 
-  test('wraps command in sh with ulimit on Linux', () => {
+  test('wraps command with prlimit on Linux (no shell)', () => {
     withPlatform('linux', () => {
       const [cmd, args] = buildSandboxedSpawn('pandoc', ['-f', 'docx'], limits);
-      expect(cmd).toBe('sh');
-      expect(args[0]).toBe('-c');
-      // Script must contain both ulimit directives and exec the real binary.
-      expect(args[1]).toMatch(/ulimit -v \d+ && ulimit -t \d+/);
-      expect(args[1]).toContain('exec "$0" "$@"');
-      // Original command/args are passed as positional parameters.
-      expect(args[2]).toBe('pandoc');
-      expect(args).toContain('-f');
-      expect(args).toContain('docx');
+      expect(cmd).toBe('prlimit');
+      // '--' separator must appear so cmd is never mistaken for a prlimit option.
+      expect(args).toContain('--');
+      const sepIdx = args.indexOf('--');
+      // Real command and its args follow the separator.
+      expect(args[sepIdx + 1]).toBe('pandoc');
+      expect(args.slice(sepIdx + 2)).toEqual(['-f', 'docx']);
     });
   });
 
-  test('embeds the correct memory (KB) and CPU (seconds) values', () => {
+  test('embeds the correct memory (bytes) and CPU (seconds) values', () => {
     withPlatform('linux', () => {
       const [, args] = buildSandboxedSpawn('soffice', [], { memLimitMb: 1024, cpuLimitSecs: 300 });
-      const script = args[1] as string;
-      // 1024 MB → 1 048 576 KB
-      expect(script).toContain(`ulimit -v ${1024 * 1024} && ulimit -t 300`);
+      // 1024 MB → 1 073 741 824 bytes
+      expect(args).toContain(`--as=${1024 * 1024 * 1024}`);
+      expect(args).toContain('--cpu=300');
     });
   });
 
-  test('uses exec so the shell is replaced by the real process', () => {
+  test('does not spawn a shell interpreter on Linux', () => {
     withPlatform('linux', () => {
-      const [, args] = buildSandboxedSpawn('pandoc', [], limits);
-      expect(args[1]).toMatch(/&&\s*exec /);
+      const [cmd] = buildSandboxedSpawn('pandoc', [], limits);
+      expect(cmd).not.toBe('sh');
+      expect(cmd).not.toBe('bash');
     });
   });
 });
@@ -195,6 +194,44 @@ describe('LibreOfficeAdapter – file size enforcement', () => {
     } finally {
       fs.rmSync(path.dirname(file), { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateShellSafePath
+// ---------------------------------------------------------------------------
+
+describe('validateShellSafePath', () => {
+  test('accepts a normal absolute path', () => {
+    expect(() => validateShellSafePath('/tmp/docx-to-md-abc/output.md')).not.toThrow();
+  });
+
+  test('accepts a path with spaces and hyphens', () => {
+    expect(() => validateShellSafePath('/tmp/my file-name_1.docx')).not.toThrow();
+  });
+
+  test('throws for a path containing a null byte', () => {
+    expect(() => validateShellSafePath('/tmp/foo\0bar')).toThrow(/null byte/);
+  });
+
+  test('throws for a path containing a control character (0x01)', () => {
+    expect(() => validateShellSafePath('/tmp/foo\x01bar')).toThrow(/control char/);
+  });
+
+  test('throws for a path containing a carriage return', () => {
+    expect(() => validateShellSafePath('/tmp/foo\rbar')).toThrow(/control char/);
+  });
+
+  test('does not throw for a path containing a tab character', () => {
+    expect(() => validateShellSafePath('/tmp/foo\tbar')).not.toThrow();
+  });
+
+  test('throws for a path containing a vertical tab (0x0b)', () => {
+    expect(() => validateShellSafePath('/tmp/foo\x0bbar')).toThrow(/control char/);
+  });
+
+  test('throws for a path containing DEL (0x7f)', () => {
+    expect(() => validateShellSafePath('/tmp/foo\x7fbar')).toThrow(/control char/);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   MAX_STDERR_BYTES,
   buildSandboxedSpawn,
   validateInputFile,
+  validateShellSafePath,
 } from '../sandbox';
 
 const LO_TIMEOUT_MS = 120_000;
@@ -45,6 +46,11 @@ export class LibreOfficeAdapter implements EngineAdapter {
     const timeout = options.timeout ?? LO_TIMEOUT_MS;
 
     validateInputFile(inputPath, options.maxFileSizeBytes);
+
+    // Reject paths containing null bytes or control characters before they are
+    // forwarded to prlimit / the external binary.
+    validateShellSafePath(inputPath);
+    validateShellSafePath(outputPath);
 
     const outDir = path.dirname(outputPath);
     fs.mkdirSync(outDir, { recursive: true });
