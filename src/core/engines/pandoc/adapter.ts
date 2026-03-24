@@ -150,6 +150,46 @@ export class PandocAdapter implements EngineAdapter {
     });
   }
 
+  async convertMarkdownToDocx(
+    inputPath: string,
+    outputPath: string,
+    options: {
+      referenceDoc?: string;
+      resourcePath?: string[];
+      toc?: boolean;
+      timeout?: number;
+      maxFileSizeBytes?: number;
+    } = {}
+  ): Promise<void> {
+    const timeout = options.timeout ?? PANDOC_TIMEOUT_MS;
+
+    validateInputFile(inputPath, options.maxFileSizeBytes);
+    validateShellSafePath(inputPath);
+    validateShellSafePath(outputPath);
+
+    const cmd: string[] = ['-f', 'gfm', '-t', 'docx', '-o', outputPath];
+
+    if (options.referenceDoc) {
+      validateShellSafePath(options.referenceDoc);
+      cmd.push(`--reference-doc=${options.referenceDoc}`);
+    }
+
+    if (options.resourcePath && options.resourcePath.length > 0) {
+      for (const rp of options.resourcePath) {
+        validateShellSafePath(rp);
+      }
+      cmd.push(`--resource-path=${options.resourcePath.join(':')}`);
+    }
+
+    if (options.toc) {
+      cmd.push('--toc');
+    }
+
+    cmd.push(inputPath);
+
+    await this.runPandoc(cmd, timeout);
+  }
+
   private collectAssets(dir: string): string[] {
     const results: string[] = [];
     const entries = fs.readdirSync(dir, { withFileTypes: true });

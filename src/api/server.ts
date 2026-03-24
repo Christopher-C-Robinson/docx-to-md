@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import { resolveEngine } from '../core/engines/registry';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
+import { PandocAdapter } from '../core/engines/pandoc/adapter';
 
 /**
  * Resolves a path through symlinks, handling the case where the path does not
@@ -204,6 +205,35 @@ const appUpload = multer({
     }
     if (file.mimetype && !ALLOWED_MIME_TYPES.has(file.mimetype)) {
       cb(new RequestValidationError('Invalid MIME type'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const ALLOWED_MD_MIME_TYPES = new Set(['text/markdown', 'text/plain', 'application/octet-stream']);
+
+const mdStorage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-upload-'));
+    cb(null, tmpDir);
+  },
+  filename(_req, _file, cb) {
+    cb(null, 'upload.md');
+  },
+});
+
+const mdUpload = multer({
+  storage: mdStorage,
+  limits: { fileSize: APP_MAX_FILE_SIZE_BYTES },
+  fileFilter(_req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext !== '.md' && ext !== '.markdown') {
+      cb(new RequestValidationError('Only Markdown (.md) files are supported'));
+      return;
+    }
+    if (file.mimetype && !ALLOWED_MD_MIME_TYPES.has(file.mimetype)) {
+      cb(new RequestValidationError('Invalid MIME type for Markdown file'));
       return;
     }
     cb(null, true);
@@ -510,6 +540,93 @@ export function createApp(): express.Application {
     }
   );
 
+  app.post(
+    '/api/md-to-docx',
+    convertLimiter,
+    mdUpload.single('file'),
+    async (req: Request, res: Response): Promise<void> => {
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded. Send a .md file as the "file" field.' });
+        return;
+      }
+
+      const uploadDirName = path.basename(String(req.file.destination ?? ''));
+      const uploadFileName = path.basename(String(req.file.filename ?? ''));
+
+      const cleanupUploadMd = (): void => {
+        if (!/^md-upload-[a-z0-9-]+$/.test(uploadDirName)) {
+          return;
+        }
+        if (!/^upload\.md$/.test(uploadFileName)) {
+          return;
+        }
+        try {
+          const resolvedInputDir = path.resolve(os.tmpdir(), uploadDirName);
+          if (isPathWithinDirectory(os.tmpdir(), resolvedInputDir)) {
+            fs.rmSync(resolvedInputDir, { recursive: true, force: true });
+          }
+        } catch {
+          // best effort
+        }
+      };
+
+      const tmpOutputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-output-'));
+      const outputPath = path.join(tmpOutputDir, 'output.docx');
+
+      try {
+        const pandoc = new PandocAdapter(null);
+        const available = await pandoc.isAvailable();
+        if (!available) {
+          res.status(503).json({ error: 'Pandoc is not available on this server. Markdown to DOCX conversion requires Pandoc.' });
+          return;
+        }
+
+        const inputPath = req.file.path;
+
+        await pandoc.convertMarkdownToDocx(inputPath, outputPath, {});
+
+        if (!fs.existsSync(outputPath)) {
+          res.status(500).json({ error: 'Conversion produced no output file.' });
+          return;
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', 'attachment; filename="converted.docx"');
+        const stream = fs.createReadStream(outputPath);
+        stream.on('error', () => {
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to stream output file.' });
+          }
+        });
+        stream.on('close', () => {
+          try {
+            fs.rmSync(tmpOutputDir, { recursive: true, force: true });
+          } catch {
+            // best effort
+          }
+          cleanupUploadMd();
+        });
+        stream.pipe(res);
+      } catch (err) {
+        try {
+          fs.rmSync(tmpOutputDir, { recursive: true, force: true });
+        } catch {
+          // best effort
+        }
+        cleanupUploadMd();
+        const errorId =
+          typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : crypto.randomBytes(16).toString('hex');
+        console.error(`MD-to-DOCX conversion failed [${errorId}]`, err);
+        res.status(500).json({
+          error: 'Conversion failed due to an internal error. Please try again later.',
+          errorId,
+        });
+      }
+    }
+  );
+
   app.get('/api/images/:sessionId/:filename', downloadLimiter, (req: Request, res: Response): void => {
     let sessionId: string;
     try {
@@ -631,7 +748,7 @@ export function createApp(): express.Application {
       return;
     }
     if (err instanceof Error) {
-      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large'];
+      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large', 'Only Markdown'];
       const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
       res.status(400).json({ error: message });
       return;

@@ -10,6 +10,7 @@ import {
 } from './types';
 import { resolveEngine } from './engines/registry';
 import { inlineImages as inlineImagesTransform } from './assets/inlineImages';
+import { PandocAdapter } from './engines/pandoc/adapter';
 
 export interface ConvertDocxOptions {
   inputPath: string;
@@ -54,4 +55,35 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
   }
 
   return { ...result, engineName: engine.name };
+}
+
+export interface RenderDocxOptions {
+  inputPath: string;
+  outputPath: string;
+  referenceDoc?: string;
+  resourcePath?: string[];
+  toc?: boolean;
+  timeout?: number;
+}
+
+/**
+ * Converts a Markdown file to a DOCX file using Pandoc.
+ * Pandoc must be installed and available on the system PATH.
+ */
+export async function renderDocx(opts: RenderDocxOptions): Promise<void> {
+  const adapter = new PandocAdapter(null);
+
+  const available = await adapter.isAvailable();
+  if (!available) {
+    throw new Error('Pandoc is required for Markdown to DOCX conversion but was not found on PATH');
+  }
+
+  fs.mkdirSync(path.dirname(opts.outputPath), { recursive: true });
+
+  await adapter.convertMarkdownToDocx(opts.inputPath, opts.outputPath, {
+    referenceDoc: opts.referenceDoc,
+    resourcePath: opts.resourcePath,
+    toc: opts.toc,
+    timeout: opts.timeout,
+  });
 }
