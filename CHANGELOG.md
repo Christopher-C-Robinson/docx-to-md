@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.16] – 2026-04-01
+
+### Changed
+- Merge pull request #81 from Christopher-C-Robinson/dependabot/npm_and_yarn/electron-41.0.2
+- Merge pull request #80 from Christopher-C-Robinson/dependabot/npm_and_yarn/production-dependencies-34c8b0b41c
+- Merge pull request #79 from Christopher-C-Robinson/dependabot/npm_and_yarn/dev-dependencies-0b6febc27d
+- Merge pull request #78 from Christopher-C-Robinson/dependabot/npm_and_yarn/tar-7.5.11
+- bump electron from 40.8.0 to 41.0.2
+- bump the production-dependencies group with 2 updates
+- bump the dev-dependencies group with 2 updates
+- bump tar from 7.5.10 to 7.5.11
+
 ## [0.1.15] – 2026-03-10
 
 ### Fixed
