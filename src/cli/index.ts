@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { convertCommand } from './commands/convert';
 import { batchCommand } from './commands/batch';
+import { mdToDocxCommand } from './commands/mdToDocx';
 
 const program = new Command();
 
@@ -22,6 +23,16 @@ program
   .option('--timeout <ms>', 'Engine timeout in milliseconds')
   .option('--inline-images', 'Embed images as Base64 data URIs (produces a single self-contained Markdown file)')
   .action(convertCommand);
+
+program
+  .command('md-to-docx <input>')
+  .description('Convert a Markdown file to DOCX (requires Pandoc)')
+  .option('-o, --output <path>', 'Output file path')
+  .option('--reference-doc <file>', 'Pandoc reference DOCX for styles and formatting')
+  .option('--resource-path <path>', 'Resource path for images and assets (can be repeated)', (v: string, a: string[]) => [...a, v], [] as string[])
+  .option('--toc', 'Include a table of contents')
+  .option('--timeout <ms>', 'Engine timeout in milliseconds')
+  .action(mdToDocxCommand);
 
 program
   .command('batch <dir>')

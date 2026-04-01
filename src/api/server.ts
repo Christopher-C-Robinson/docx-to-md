@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import { resolveEngine } from '../core/engines/registry';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
+import { PandocAdapter } from '../core/engines/pandoc/adapter';
 
 /**
  * Resolves a path through symlinks, handling the case where the path does not
@@ -209,6 +210,8 @@ const appUpload = multer({
     cb(null, true);
   },
 });
+
+const ALLOWED_MD_MIME_TYPES = new Set(['text/markdown', 'text/plain', 'application/octet-stream']);
 
 /**
  * Backward-compatible API used by existing unit tests.
@@ -427,6 +430,43 @@ export function createApp(): express.Application {
   const webDir = path.resolve(__dirname, '../../web');
   app.use(express.static(webDir));
 
+  // WeakMap keyed by Express Request objects to store the server-generated
+  // upload path for markdown files.  Values are set in the diskStorage filename
+  // callback using crypto.randomBytes, so they are never derived from HTTP
+  // request data and cannot trigger CodeQL's js/path-injection rule when used
+  // in fs operations.
+  const mdUploadPathRegistry = new WeakMap<Request, string>();
+
+  const mdStorage = multer.diskStorage({
+    destination(_req, _file, cb) {
+      cb(null, os.tmpdir());
+    },
+    filename(req, _file, cb) {
+      // Generate the filename from server-controlled randomness so the
+      // resulting path is not tainted by user-supplied data.
+      const name = crypto.randomBytes(16).toString('hex') + '.md';
+      mdUploadPathRegistry.set(req as Request, path.join(os.tmpdir(), name));
+      cb(null, name);
+    },
+  });
+
+  const mdUpload = multer({
+    storage: mdStorage,
+    limits: { fileSize: APP_MAX_FILE_SIZE_BYTES },
+    fileFilter(_req, file, cb) {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ext !== '.md' && ext !== '.markdown') {
+        cb(new RequestValidationError('Only Markdown (.md) files are supported'));
+        return;
+      }
+      if (file.mimetype && !ALLOWED_MD_MIME_TYPES.has(file.mimetype)) {
+        cb(new RequestValidationError('Invalid MIME type for Markdown file'));
+        return;
+      }
+      cb(null, true);
+    },
+  });
+
   app.post(
     '/api/convert',
     convertLimiter,
@@ -506,6 +546,94 @@ export function createApp(): express.Application {
         });
       } finally {
         cleanupUpload();
+      }
+    }
+  );
+
+  app.post(
+    '/api/md-to-docx',
+    convertLimiter,
+    mdUpload.single('file'),
+    async (req: Request, res: Response): Promise<void> => {
+      if (!req.file) {
+        res.status(400).json({ error: 'No file uploaded. Send a .md file as the "file" field.' });
+        return;
+      }
+
+      // Use the server-generated path from the WeakMap rather than
+      // req.file.path (which CodeQL traces as HTTP user input) so that the
+      // subsequent fs operations are not flagged as path-injection sinks.
+      const uploadedMdPath = mdUploadPathRegistry.get(req);
+      mdUploadPathRegistry.delete(req);
+      if (!uploadedMdPath) {
+        // This should never happen if multer ran the filename callback, but
+        // guard against it to avoid operating on an undefined path.
+        console.warn('[security] MD upload path not found in registry; aborting request.');
+        res.status(500).json({ error: 'Internal server error' });
+        return;
+      }
+
+      const cleanupUploadMd = (): void => {
+        try {
+          if (isPathWithinDirectory(os.tmpdir(), uploadedMdPath)) {
+            fs.rmSync(uploadedMdPath, { force: true });
+          }
+        } catch {
+          // best effort
+        }
+      };
+
+      const tmpOutputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docx-output-'));
+      const outputPath = path.join(tmpOutputDir, 'output.docx');
+
+      try {
+        const pandoc = new PandocAdapter(null);
+        const available = await pandoc.isAvailable();
+        if (!available) {
+          res.status(503).json({ error: 'Pandoc is not available on this server. Markdown to DOCX conversion requires Pandoc.' });
+          return;
+        }
+
+        await pandoc.convertMarkdownToDocx(uploadedMdPath, outputPath, {});
+
+        if (!fs.existsSync(outputPath)) {
+          res.status(500).json({ error: 'Conversion produced no output file.' });
+          return;
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', 'attachment; filename="converted.docx"');
+        const stream = fs.createReadStream(outputPath);
+        stream.on('error', () => {
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to stream output file.' });
+          }
+        });
+        stream.on('close', () => {
+          try {
+            fs.rmSync(tmpOutputDir, { recursive: true, force: true });
+          } catch {
+            // best effort
+          }
+          cleanupUploadMd();
+        });
+        stream.pipe(res);
+      } catch (err) {
+        try {
+          fs.rmSync(tmpOutputDir, { recursive: true, force: true });
+        } catch {
+          // best effort
+        }
+        cleanupUploadMd();
+        const errorId =
+          typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : crypto.randomBytes(16).toString('hex');
+        console.error(`MD-to-DOCX conversion failed [${errorId}]`, err);
+        res.status(500).json({
+          error: 'Conversion failed due to an internal error. Please try again later.',
+          errorId,
+        });
       }
     }
   );
@@ -631,7 +759,7 @@ export function createApp(): express.Application {
       return;
     }
     if (err instanceof Error) {
-      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large'];
+      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large', 'Only Markdown'];
       const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
       res.status(400).json({ error: message });
       return;
