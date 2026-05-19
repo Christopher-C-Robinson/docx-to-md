@@ -58,10 +58,11 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
 
   const resolvedOutputDir = path.dirname(opts.outputPath);
   const effectiveMediaDir = opts.mediaDir ?? (opts.inlineImages ? path.join(resolvedOutputDir, 'media') : undefined);
+  const markdownFormat: MarkdownFormat = opts.format === 'commonmark' ? 'commonmark' : 'gfm';
 
   const options: ConversionOptions = {
     engine: opts.engine,
-    format: (opts.format as MarkdownFormat | undefined) ?? 'gfm',
+    format: markdownFormat,
     mediaDir: effectiveMediaDir,
     trackChanges: opts.trackChanges,
     luaFilters: opts.luaFilters,

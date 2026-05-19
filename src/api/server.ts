@@ -95,6 +95,7 @@ export interface ConvertResponse {
 
 export interface SessionData {
   createdAt: number;
+  downloadBaseName?: string;
 }
 
 class RequestValidationError extends Error {}
@@ -153,6 +154,12 @@ function sanitizeAssetFilename(filename: string): string {
     throw new Error('Invalid filename');
   }
   return safe;
+}
+
+function normalizeDownloadBaseName(filename: string): string {
+  const base = path.basename(filename, path.extname(filename));
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return safe || 'converted';
 }
 
 function hasFilesInDirectory(dirPath: string): boolean {
@@ -523,6 +530,7 @@ export function createApp(): express.Application {
           });
           sessions.set(sessionId, {
             createdAt: Date.now(),
+            downloadBaseName: normalizeDownloadBaseName(String(req.file.originalname ?? 'converted')),
           });
           res.json({
             sessionId,
@@ -554,6 +562,7 @@ export function createApp(): express.Application {
 
         sessions.set(sessionId, {
           createdAt: Date.now(),
+          downloadBaseName: normalizeDownloadBaseName(String(req.file.originalname ?? 'converted')),
         });
 
         res.json({
@@ -594,7 +603,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -627,7 +637,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -648,7 +659,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -699,7 +711,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -710,7 +723,8 @@ export function createApp(): express.Application {
       return;
     }
 
-    res.download('output.pdf', 'converted.pdf', { root: sessionDir });
+    const downloadName = `${session.downloadBaseName ?? 'converted'}.pdf`;
+    res.download('output.pdf', downloadName, { root: sessionDir });
   });
 
   app.get('/api/health', (_req: Request, res: Response): void => {
