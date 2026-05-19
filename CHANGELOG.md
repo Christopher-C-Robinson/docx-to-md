@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.18] – 2026-05-19
+
+### Added
+- add update detection and notification for CLI, server/web, and Electron
+
+### Fixed
+- make CLI update box alignment fully dynamic
+- address code review feedback (box alignment, null check, param cleanup)
+
+### Changed
+- Merge pull request #106 from Christopher-C-Robinson/copilot/add-update-detection-feature
+- Initial plan
+
 ## [0.1.17] – 2026-05-19
 
 ### Added
