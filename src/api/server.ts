@@ -366,12 +366,12 @@ export function createServer(options?: {
           if (timedOut) return;
 
           const outputBuffer = await fs.promises.readFile(outputPath);
-          const inputBase = normalizeDownloadBaseName(String(req.file.originalname ?? 'converted'));
+          const downloadBaseName = normalizeDownloadBaseName(String(req.file.originalname ?? 'converted'));
           for (const warning of result.warnings) {
             res.append('X-Conversion-Warning', warning);
           }
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="${inputBase}.pdf"`);
+          res.setHeader('Content-Disposition', `attachment; filename="${downloadBaseName}.pdf"`);
           res.send(outputBuffer);
           return;
         }
