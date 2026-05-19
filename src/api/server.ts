@@ -11,6 +11,11 @@ import { convertToPdf } from '../core/convert';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 import { PandocAdapter } from '../core/engines/pandoc/adapter';
+import { checkForUpdate } from '../core/updateChecker';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pkg = require('../../package.json') as { version: string };
+const CURRENT_VERSION: string = pkg.version;
 
 /**
  * Resolves a path through symlinks, handling the case where the path does not
@@ -853,6 +858,15 @@ export function createApp(): express.Application {
 
     const downloadName = `${session.downloadBaseName ?? 'converted'}.pdf`;
     res.download(path.basename(pdfPath), downloadName, { root: sessionDir });
+  });
+
+  app.get('/api/version', async (_req: Request, res: Response): Promise<void> => {
+    const latest = await checkForUpdate(CURRENT_VERSION, 4000);
+    res.json({
+      current: CURRENT_VERSION,
+      latest: latest ?? CURRENT_VERSION,
+      updateAvailable: latest !== null,
+    });
   });
 
   app.get('/api/health', (_req: Request, res: Response): void => {

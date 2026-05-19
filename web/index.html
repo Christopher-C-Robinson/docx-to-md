@@ -422,6 +422,47 @@
       color: var(--text-muted);
       border-top: 1px solid var(--border);
     }
+
+    /* ── Update banner ─────────────────────────── */
+    #update-banner {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: rgba(108, 125, 232, 0.1);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      font-size: 13px;
+    }
+
+    #update-banner.visible { display: flex; }
+
+    #update-banner .update-icon { font-size: 18px; flex-shrink: 0; }
+
+    #update-banner .update-text { flex: 1; }
+
+    #update-banner .update-text strong { color: var(--accent); }
+
+    #update-banner .update-link {
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    #update-banner .update-link:hover { text-decoration: underline; }
+
+    #update-dismiss {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    #update-dismiss:hover { color: var(--text); border-color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -431,6 +472,17 @@
   </header>
 
   <main>
+    <!-- Update banner -->
+    <div id="update-banner" role="alert" aria-live="polite">
+      <span class="update-icon">🚀</span>
+      <span class="update-text">
+        <strong>Update available!</strong>
+        A new version (<span id="update-version"></span>) of docx-to-md is available.
+        <a id="update-release-link" class="update-link" href="https://github.com/Christopher-C-Robinson/docx-to-md/releases/latest" target="_blank" rel="noopener noreferrer">View release →</a>
+      </span>
+      <button id="update-dismiss" aria-label="Dismiss update notification">Dismiss</button>
+    </div>
+
     <!-- Drop zone -->
     <div id="drop-zone" role="button" tabindex="0" aria-label="Drop a .docx file here or click to browse">
       <span class="icon">📄</span>
@@ -917,6 +969,29 @@
       dropZone.style.display = '';
       resetBtn.style.display = '';
     }
+
+    // ── Update notification ────────────────────────────────────────────────
+    (async function checkForAppUpdate() {
+      try {
+        const res = await fetch('/api/version');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.updateAvailable && typeof data.latest === 'string') {
+          const banner = document.getElementById('update-banner');
+          const versionSpan = document.getElementById('update-version');
+          if (banner && versionSpan) {
+            versionSpan.textContent = 'v' + esc(data.latest);
+            banner.classList.add('visible');
+          }
+        }
+      } catch {
+        // Silently ignore update check failures (e.g. network unavailable)
+      }
+    })();
+
+    document.getElementById('update-dismiss').addEventListener('click', () => {
+      document.getElementById('update-banner').classList.remove('visible');
+    });
   </script>
 </body>
 </html>

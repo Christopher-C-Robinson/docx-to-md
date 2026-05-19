@@ -1,7 +1,11 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, dialog } from 'electron';
 import * as http from 'http';
 import * as path from 'path';
 import type { Application } from 'express';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pkg = require('../package.json') as { version: string };
+const CURRENT_VERSION: string = pkg.version;
 
 let mainWindow: BrowserWindow | null = null;
 let httpServer: http.Server | null = null;
@@ -39,6 +43,39 @@ function loadCreateApp(): () => Application {
 
 function isLocalAppUrl(url: string, port: number): boolean {
   return url.startsWith(`http://127.0.0.1:${port}`);
+}
+
+async function checkForUpdateAndNotify(): Promise<void> {
+  try {
+    // Load the updateChecker from the compiled dist directory at runtime,
+    // consistent with how the embedded Express server is loaded.
+    const checkerPath = path.join(app.getAppPath(), 'dist', 'core', 'updateChecker.js');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { checkForUpdate } = require(checkerPath) as {
+      checkForUpdate: (version: string, timeoutMs?: number) => Promise<string | null>;
+    };
+
+    const latest = await checkForUpdate(CURRENT_VERSION, 8000);
+    if (!latest) return;
+
+    const result = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Available',
+      message: `A new version of docx-to-md is available`,
+      detail: `Current version: v${CURRENT_VERSION}\nLatest version:  v${latest}\n\nWould you like to view the release page?`,
+      buttons: ['View Release', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+
+    if (result.response === 0) {
+      await shell.openExternal(
+        'https://github.com/Christopher-C-Robinson/docx-to-md/releases/latest'
+      );
+    }
+  } catch {
+    // Silently ignore update check failures
+  }
 }
 
 function createWindow(port: number): void {
@@ -89,6 +126,8 @@ app.whenReady().then(async () => {
   try {
     serverPort = await startServer();
     createWindow(serverPort);
+    // Check for updates in the background after the window is ready.
+    checkForUpdateAndNotify();
   } catch (err) {
     console.error('Failed to start server:', err);
     app.quit();

@@ -3,13 +3,35 @@ import { Command } from 'commander';
 import { convertCommand } from './commands/convert';
 import { batchCommand } from './commands/batch';
 import { mdToDocxCommand } from './commands/mdToDocx';
+import { checkForUpdate } from '../core/updateChecker';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pkg = require('../../package.json') as { version: string };
+const CURRENT_VERSION: string = pkg.version;
+
+async function notifyIfUpdateAvailable(): Promise<void> {
+  try {
+    const latest = await checkForUpdate(CURRENT_VERSION, 4000);
+    if (latest) {
+      process.stderr.write(
+        `\n  ╔══════════════════════════════════════════════════════════╗\n` +
+        `  ║  Update available: v${CURRENT_VERSION} → v${latest}`.padEnd(63) + `║\n` +
+        `  ║  Run: npm install -g docx-to-md                          ║\n` +
+        `  ║  https://github.com/Christopher-C-Robinson/docx-to-md    ║\n` +
+        `  ╚══════════════════════════════════════════════════════════╝\n\n`
+      );
+    }
+  } catch {
+    // Silently ignore update check failures
+  }
+}
 
 const program = new Command();
 
 program
   .name('docx2md')
   .description('Convert DOCX/Markdown files to Markdown or PDF with pluggable engine support')
-  .version('0.1.0');
+  .version(CURRENT_VERSION);
 
 program
   .command('convert <input>')
@@ -47,4 +69,8 @@ program
   .option('--inline-images', 'Embed images as Base64 data URIs (produces self-contained Markdown files)')
   .action(batchCommand);
 
-program.parse(process.argv);
+program.parseAsync(process.argv).then(() => {
+  // Fire update check in the background after the command completes.
+  // Use a short timeout so the process can exit promptly; this is best-effort.
+  notifyIfUpdateAvailable().catch(() => {/* ignore */});
+}).catch(() => {/* commander already handled the error */});
