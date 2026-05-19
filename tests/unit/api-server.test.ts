@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import request from 'supertest';
 import { createServer, MAX_FILE_SIZE_BYTES, DEFAULT_TIMEOUT_MS, mimeForExt } from '../../src/api/server';
+import * as coreConvert from '../../src/core/convert';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,6 +121,54 @@ describe('POST /convert – successful conversion (corpus)', () => {
       .readdirSync(os.tmpdir())
       .filter((f) => !tmpBefore.has(f) && !f.startsWith('docx-to-md-'));
     expect(uploadedFiles).toHaveLength(0);
+  });
+});
+
+describe('POST /convert – PDF output', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('returns PDF bytes for DOCX input when to=pdf', async () => {
+    const spy = jest.spyOn(coreConvert, 'convertToPdf').mockImplementation(async (opts) => {
+      fs.writeFileSync(opts.outputPath, Buffer.from('%PDF-1.4\n', 'utf8'));
+      return { markdown: '', assets: [], warnings: [], metadata: {}, engineName: 'pandoc' };
+    });
+
+    const app = createServer();
+    const res = await request(app)
+      .post('/convert')
+      .field('to', 'pdf')
+      .attach('file', FAKE_DOCX_BYTES, {
+        filename: 'sample.docx',
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+
+    expect(spy).toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+  });
+
+  test('returns PDF bytes for Markdown input when to=pdf', async () => {
+    const spy = jest.spyOn(coreConvert, 'convertToPdf').mockImplementation(async (opts) => {
+      fs.writeFileSync(opts.outputPath, Buffer.from('%PDF-1.4\n', 'utf8'));
+      return { markdown: '', assets: [], warnings: [], metadata: {}, engineName: 'pandoc' };
+    });
+
+    const app = createServer();
+    const res = await request(app)
+      .post('/convert')
+      .field('to', 'pdf')
+      .attach('file', Buffer.from('# Title\n', 'utf8'), {
+        filename: 'sample.md',
+        contentType: 'text/markdown',
+      });
+
+    expect(spy).toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(Buffer.isBuffer(res.body)).toBe(true);
   });
 });
 

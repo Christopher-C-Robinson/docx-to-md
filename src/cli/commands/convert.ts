@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
-import { convertDocx } from '../../core/convert';
+import { convertDocx, convertToPdf } from '../../core/convert';
 
 interface ConvertCommandOptions {
   engine?: string;
@@ -25,24 +25,53 @@ export async function convertCommand(
     process.exit(1);
   }
 
+  const ext = path.extname(inputPath).toLowerCase();
+  const isDocx = ext === '.docx';
+  const isMarkdown = ext === '.md' || ext === '.markdown';
+  const to = (opts.to ?? 'gfm').toLowerCase();
+
+  if (!isDocx && !isMarkdown) {
+    console.error('Error: Input file must be .docx or .md');
+    process.exit(1);
+  }
+
+  if (to !== 'pdf' && !isDocx) {
+    console.error('Error: Markdown output is supported only for .docx input files');
+    process.exit(1);
+  }
+
   const outputPath = opts.output
     ? path.resolve(opts.output)
-    : path.join(path.dirname(inputPath), path.basename(inputPath, '.docx') + '.md');
+    : path.join(
+      path.dirname(inputPath),
+      path.basename(inputPath, path.extname(inputPath)) + (to === 'pdf' ? '.pdf' : '.md')
+    );
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
   try {
-    const result = await convertDocx({
-      inputPath,
-      outputPath,
-      engine: opts.engine as EngineType | undefined,
-      format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
-      mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
-      trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
-      luaFilters: opts.luaFilter,
-      timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
-      inlineImages: opts.inlineImages,
-    });
+    const engine = opts.engine as EngineType | undefined;
+    const timeout = opts.timeout ? parseInt(opts.timeout, 10) : undefined;
+    const result = to === 'pdf'
+      ? await convertToPdf({
+        inputPath,
+        outputPath,
+        engine,
+        trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
+        luaFilters: opts.luaFilter,
+        timeout,
+      })
+      : await convertDocx({
+        inputPath,
+        outputPath,
+        engine,
+        format: (to as MarkdownFormat | undefined) ?? 'gfm',
+        mediaDir: opts.mediaDir ? path.resolve(opts.mediaDir) : undefined,
+        trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
+        luaFilters: opts.luaFilter,
+        timeout,
+        inlineImages: opts.inlineImages,
+      });
 
     console.error(`Using engine: ${result.engineName}`);
 

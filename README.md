@@ -9,6 +9,7 @@
 - **Multiple engines**: Pandoc (recommended), Mammoth (pure JS), LibreOffice
 - **Auto-detection**: Falls back to the next available engine automatically
 - **GFM & CommonMark** output formats
+- **PDF output** from both DOCX and Markdown inputs (Pandoc)
 - **Media extraction**: Images saved to a configurable directory
 - **Batch conversion**: Process entire directory trees in parallel
 - **Tracked changes**: Accept/reject/include policy (Pandoc only)
@@ -205,12 +206,15 @@ docx2md convert document.docx
 docx2md convert document.docx -o output.md --media-dir ./images
 docx2md convert document.docx --engine mammoth
 docx2md convert document.docx --track-changes accept
+docx2md convert document.docx --to pdf -o output.pdf
+docx2md convert notes.md --to pdf -o notes.pdf
 ```
 
 ### Batch conversion
 
 ```bash
 docx2md batch ./docs/ --out ./markdown/ --jobs 8
+docx2md batch ./docs/ --out ./pdf --to pdf
 ```
 
 ### Options
@@ -218,7 +222,7 @@ docx2md batch ./docs/ --out ./markdown/ --jobs 8
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-e, --engine` | `pandoc` \| `mammoth` \| `libreoffice` | auto |
-| `-t, --to` | `gfm` \| `commonmark` | `gfm` |
+| `-t, --to` | `gfm` \| `commonmark` \| `pdf` | `gfm` |
 | `-o, --output` | Output file path | input path with `.md` |
 | `--media-dir` | Directory for extracted images | — |
 | `--track-changes` | `accept` \| `reject` \| `all` | — |
@@ -240,6 +244,8 @@ const result = await engine.convert('input.docx', 'output.md', {
 console.log(result.markdown);
 console.log(result.warnings);
 ```
+
+For API/web PDF conversion, send `to=pdf` with `.docx` or `.md` upload and download via `/api/download/pdf/:sessionId` (web server) or read the direct PDF response from `POST /convert`.
 
 ## Architecture
 

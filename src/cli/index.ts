@@ -7,14 +7,14 @@ const program = new Command();
 
 program
   .name('docx2md')
-  .description('Convert DOCX files to Markdown with pluggable engine support')
+  .description('Convert DOCX/Markdown files to Markdown or PDF with pluggable engine support')
   .version('0.1.0');
 
 program
   .command('convert <input>')
-  .description('Convert a single DOCX file to Markdown')
+  .description('Convert a single file (.docx/.md) to Markdown or PDF')
   .option('-e, --engine <engine>', 'Conversion engine (pandoc|mammoth|libreoffice); auto-detected if omitted')
-  .option('-t, --to <format>', 'Output Markdown format (gfm|commonmark)', 'gfm')
+  .option('-t, --to <format>', 'Output format (gfm|commonmark|pdf)', 'gfm')
   .option('-o, --output <path>', 'Output file path')
   .option('--media-dir <dir>', 'Directory for extracted media assets')
   .option('--track-changes <policy>', 'Tracked changes policy (accept|reject|all)')
@@ -25,9 +25,9 @@ program
 
 program
   .command('batch <dir>')
-  .description('Batch convert all DOCX files in a directory')
+  .description('Batch convert all DOCX files in a directory to Markdown or PDF')
   .option('-e, --engine <engine>', 'Conversion engine (pandoc|mammoth|libreoffice)')
-  .option('-t, --to <format>', 'Output Markdown format (gfm|commonmark)', 'gfm')
+  .option('-t, --to <format>', 'Output format (gfm|commonmark|pdf)', 'gfm')
   .option('--out <dir>', 'Output directory')
   .option('--media-dir <dir>', 'Directory for extracted media assets')
   .option('--track-changes <policy>', 'Tracked changes policy (accept|reject|all)')

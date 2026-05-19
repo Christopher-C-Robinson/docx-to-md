@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>docx → md Converter</title>
+  <title>docx/md → markdown/pdf Converter</title>
   <script src="/vendor/markdown-it.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
   <style>
@@ -434,9 +434,16 @@
     <!-- Drop zone -->
     <div id="drop-zone" role="button" tabindex="0" aria-label="Drop a .docx file here or click to browse">
       <span class="icon">📄</span>
-      <h2>Drop your Word document(s) here</h2>
-      <p>or <span class="browse" id="browse-link">click to browse</span> · .docx files only · max 50 MB · multiple files supported</p>
-      <input type="file" id="file-input" accept=".docx" multiple aria-hidden="true" />
+      <h2>Drop your document(s) here</h2>
+      <p>or <span class="browse" id="browse-link">click to browse</span> · .docx/.md files · max 50 MB · multiple files supported</p>
+      <input type="file" id="file-input" accept=".docx,.md,.markdown,text/markdown" multiple aria-hidden="true" />
+    </div>
+    <div class="toolbar">
+      <h3>Output</h3>
+      <select id="output-format" class="btn-secondary" aria-label="Output format">
+        <option value="markdown">Markdown</option>
+        <option value="pdf">PDF</option>
+      </select>
     </div>
 
     <!-- Status bar -->
@@ -455,6 +462,7 @@
     <section id="result-section" aria-label="Conversion result">
       <div class="toolbar">
         <h3>Markdown</h3>
+        <button class="btn-primary" id="dl-pdf-btn" style="display:none">⬇ Download .pdf</button>
         <button class="btn-primary" id="dl-md-btn">⬇ Download .md</button>
         <button class="btn-primary" id="dl-zip-btn">⬇ Download .zip</button>
         <button class="btn-secondary" id="copy-md-btn">📋 Copy</button>
@@ -526,6 +534,7 @@
     const imgGrid       = document.getElementById('img-grid');
     const resetBtn      = document.getElementById('reset-btn');
     const dlMdBtn       = document.getElementById('dl-md-btn');
+    const dlPdfBtn      = document.getElementById('dl-pdf-btn');
     const dlZipBtn      = document.getElementById('dl-zip-btn');
     const dlImgsBtn     = document.getElementById('dl-imgs-btn');
     const copyMdBtn     = document.getElementById('copy-md-btn');
@@ -536,7 +545,12 @@
     const batchTitle    = document.getElementById('batch-title');
     const batchConvertBtn = document.getElementById('batch-convert-btn');
     const batchResetBtn   = document.getElementById('batch-reset-btn');
+    const outputFormatSelect = document.getElementById('output-format');
     const markdownRenderer = new markdownit({ html: true, linkify: true, typographer: false });
+
+    function outputFormat() {
+      return outputFormatSelect.value === 'pdf' ? 'pdf' : 'markdown';
+    }
 
     function toUserError(err) {
       if (err instanceof Error) {
@@ -595,13 +609,18 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      const files = Array.from(e.dataTransfer?.files ?? []).filter(f => f.name.toLowerCase().endsWith('.docx'));
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(f => {
+        const name = f.name.toLowerCase();
+        return outputFormat() === 'pdf'
+          ? (name.endsWith('.docx') || name.endsWith('.md') || name.endsWith('.markdown'))
+          : name.endsWith('.docx');
+      });
       if (files.length === 1) {
         handleFile(files[0]);
       } else if (files.length > 1) {
         startBatch(files);
       } else if (e.dataTransfer?.files?.length > 0) {
-        showError('Only .docx files are supported.');
+        showError(outputFormat() === 'pdf' ? 'Only .docx/.md files are supported for PDF output.' : 'Only .docx files are supported for Markdown output.');
       }
     });
     dropZone.addEventListener('click', () => fileInput.click());
@@ -609,18 +628,23 @@
     document.getElementById('browse-link').addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
     fileInput.addEventListener('change', () => {
       const allFiles = Array.from(fileInput.files ?? []);
-      const docxFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.docx'));
-      if (allFiles.length > 0 && docxFiles.length === 0) {
-        showError('Only .docx files are supported.');
+      const filteredFiles = allFiles.filter(f => {
+        const name = f.name.toLowerCase();
+        return outputFormat() === 'pdf'
+          ? (name.endsWith('.docx') || name.endsWith('.md') || name.endsWith('.markdown'))
+          : name.endsWith('.docx');
+      });
+      if (allFiles.length > 0 && filteredFiles.length === 0) {
+        showError(outputFormat() === 'pdf' ? 'Only .docx/.md files are supported for PDF output.' : 'Only .docx files are supported for Markdown output.');
         return;
       }
-      if (docxFiles.length > 0 && docxFiles.length < allFiles.length) {
-        showError('Some selected files were ignored because they are not .docx.');
+      if (filteredFiles.length > 0 && filteredFiles.length < allFiles.length) {
+        showError(outputFormat() === 'pdf' ? 'Some selected files were ignored because they are not .docx/.md.' : 'Some selected files were ignored because they are not .docx.');
       }
-      if (docxFiles.length === 1) {
-        handleFile(docxFiles[0]);
-      } else if (docxFiles.length > 1) {
-        startBatch(docxFiles);
+      if (filteredFiles.length === 1) {
+        handleFile(filteredFiles[0]);
+      } else if (filteredFiles.length > 1) {
+        startBatch(filteredFiles);
       }
     });
 
@@ -636,6 +660,12 @@
       warningsList.innerHTML = '';
       imgGrid.innerHTML = '';
       mdPreview.innerHTML = ''; mdRaw.value = '';
+      dlPdfBtn.style.display = 'none';
+      dlMdBtn.style.display = '';
+      dlZipBtn.style.display = '';
+      copyMdBtn.style.display = '';
+      tabPreview.style.display = '';
+      tabRaw.style.display = '';
       resetBtn.style.display = 'none';
       dropZone.style.display = '';
       fileInput.value = '';
@@ -659,6 +689,11 @@
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
     });
 
+    dlPdfBtn.addEventListener('click', () => {
+      if (!sessionId) return;
+      window.location.href = `/api/download/pdf/${encodeURIComponent(sessionId)}`;
+    });
+
     // ── Download zip (markdown + media) ───────────────────────────────────
     dlZipBtn.addEventListener('click', () => {
       if (!sessionId) return;
@@ -673,8 +708,13 @@
 
     // ── Single-file convert ────────────────────────────────────────────────
     async function handleFile(file) {
-      if (!file.name.toLowerCase().endsWith('.docx')) {
-        showError('Only .docx files are supported.');
+      const name = file.name.toLowerCase();
+      if (outputFormat() === 'markdown' && !name.endsWith('.docx')) {
+        showError('Only .docx files are supported for Markdown output.');
+        return;
+      }
+      if (outputFormat() === 'pdf' && !(name.endsWith('.docx') || name.endsWith('.md') || name.endsWith('.markdown'))) {
+        showError('Only .docx/.md files are supported for PDF output.');
         return;
       }
 
@@ -687,6 +727,7 @@
 
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('to', outputFormat());
 
       try {
         const res = await fetch('/api/convert', { method: 'POST', body: formData });
@@ -694,6 +735,7 @@
 
         sessionId = data.sessionId;
         markdownRaw = data.markdown || '';
+        const isPdf = outputFormat() === 'pdf';
 
         // Warnings
         if (data.warnings && data.warnings.length > 0) {
@@ -701,22 +743,35 @@
           warningsBox.classList.add('visible');
         }
 
-        // Markdown preview (render markdown -> rewrite image src -> sanitise)
-        mdRaw.value = markdownRaw;
-        const renderedMarkdown = markdownRenderer.render(markdownRaw);
-        const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
-        mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
         resultSection.classList.add('visible');
+        dlPdfBtn.style.display = isPdf ? '' : 'none';
+        dlMdBtn.style.display = isPdf ? 'none' : '';
+        dlZipBtn.style.display = isPdf ? 'none' : '';
+        copyMdBtn.style.display = isPdf ? 'none' : '';
+        tabPreview.style.display = isPdf ? 'none' : '';
+        tabRaw.style.display = isPdf ? 'none' : '';
 
-        // Images
-        if (data.images && data.images.length > 0) {
-          imgGrid.innerHTML = data.images.map(img =>
-            `<div class="img-card">
-              <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy" />
-              <div class="img-name" title="${esc(img.name)}">${esc(img.name)}</div>
-            </div>`
-          ).join('');
-          imagesSection.classList.add('visible');
+        if (isPdf) {
+          mdRaw.value = '';
+          mdPreview.innerHTML = 'PDF conversion complete. Use <strong>Download .pdf</strong>.';
+          imagesSection.classList.remove('visible');
+        } else {
+          // Markdown preview (render markdown -> rewrite image src -> sanitise)
+          mdRaw.value = markdownRaw;
+          const renderedMarkdown = markdownRenderer.render(markdownRaw);
+          const rewrittenPreviewHtml = rewriteRenderedImagePaths(renderedMarkdown, sessionId);
+          mdPreview.innerHTML = DOMPurify.sanitize(rewrittenPreviewHtml);
+
+          // Images
+          if (data.images && data.images.length > 0) {
+            imgGrid.innerHTML = data.images.map(img =>
+              `<div class="img-card">
+                <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy" />
+                <div class="img-name" title="${esc(img.name)}">${esc(img.name)}</div>
+              </div>`
+            ).join('');
+            imagesSection.classList.add('visible');
+          }
         }
 
         statusBar.classList.remove('visible');
@@ -751,11 +806,13 @@
 
     function buildBatchItemHTML(item, i) {
       const statusLabel = { pending: 'Pending', running: 'Converting…', done: 'Done', error: 'Error' }[item.status];
-      const actions = item.status === 'done'
-        ? `<div class="batch-actions">
-             <button class="btn-primary" data-batch-action="md" data-batch-index="${i}">⬇ .md</button>
+       const actions = item.status === 'done'
+         ? `<div class="batch-actions">
+             ${outputFormat() === 'pdf'
+               ? `<button class="btn-primary" data-batch-action="pdf" data-batch-index="${i}">⬇ .pdf</button>`
+               : `<button class="btn-primary" data-batch-action="md" data-batch-index="${i}">⬇ .md</button>
              <button class="btn-primary" data-batch-action="zip" data-batch-index="${i}">⬇ .zip</button>
-             ${item.hasImages ? `<button class="btn-secondary" data-batch-action="imgs" data-batch-index="${i}">⬇ images</button>` : ''}
+             ${item.hasImages ? `<button class="btn-secondary" data-batch-action="imgs" data-batch-index="${i}">⬇ images</button>` : ''}`}
            </div>`
         : (item.status === 'error'
             ? `<span style="color:var(--danger);font-size:12px">${esc(item.error || 'Failed')}</span>`
@@ -788,6 +845,8 @@
       if (!item?.sessionId) return;
       if (action === 'md') {
         window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
+      } else if (action === 'pdf') {
+        window.location.href = `/api/download/pdf/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'zip') {
         window.location.href = `/api/download/zip/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'imgs') {
@@ -808,6 +867,7 @@
         try {
           const formData = new FormData();
           formData.append('file', item.file);
+          formData.append('to', outputFormat());
           const res = await fetch('/api/convert', { method: 'POST', body: formData });
           const data = await readApiResponse(res);
           item.sessionId = data.sessionId;
