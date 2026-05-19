@@ -29,9 +29,15 @@ export async function convertCommand(
   const isDocx = ext === '.docx';
   const isMarkdown = ext === '.md' || ext === '.markdown';
   const to = (opts.to ?? 'gfm').toLowerCase();
+  const validTargets = new Set(['gfm', 'commonmark', 'pdf']);
 
   if (!isDocx && !isMarkdown) {
     console.error('Error: Input file must be .docx or .md');
+    process.exit(1);
+  }
+
+  if (!validTargets.has(to)) {
+    console.error(`Error: Invalid --to value "${to}". Use gfm, commonmark, or pdf.`);
     process.exit(1);
   }
 

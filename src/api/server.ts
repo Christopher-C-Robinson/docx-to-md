@@ -366,7 +366,7 @@ export function createServer(options?: {
           if (timedOut) return;
 
           const outputBuffer = await fs.promises.readFile(outputPath);
-          const inputBase = path.basename(req.file.originalname, path.extname(req.file.originalname)) || 'converted';
+          const inputBase = normalizeDownloadBaseName(String(req.file.originalname ?? 'converted'));
           for (const warning of result.warnings) {
             res.append('X-Conversion-Warning', warning);
           }
