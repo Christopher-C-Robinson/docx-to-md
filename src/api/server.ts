@@ -7,6 +7,7 @@ import multer from 'multer';
 import archiver from 'archiver';
 import rateLimit from 'express-rate-limit';
 import { resolveEngine } from '../core/engines/registry';
+import { convertToPdf } from '../core/convert';
 import { ConversionOptions } from '../core/types';
 import { MammothAdapter } from '../core/engines/mammoth/adapter';
 
@@ -75,6 +76,8 @@ const APP_CONVERT_RATE_LIMIT_MAX = 30;
 const APP_DOWNLOAD_RATE_LIMIT_MAX = 120;
 const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/markdown',
+  'text/plain',
   'application/octet-stream',
 ]);
 
@@ -92,6 +95,7 @@ export interface ConvertResponse {
 
 export interface SessionData {
   createdAt: number;
+  downloadBaseName?: string;
 }
 
 class RequestValidationError extends Error {}
@@ -110,7 +114,7 @@ function normalizeSessionId(value: unknown): string {
   return sessionId;
 }
 
-function sessionPaths(sessionId: string): { sessionDir: string; markdownPath: string; mediaDir: string } {
+function sessionPaths(sessionId: string): { sessionDir: string; markdownPath: string; pdfPath: string; mediaDir: string } {
   const safeSessionId = normalizeSessionId(sessionId);
   const sessionDir = path.resolve(UPLOAD_ROOT, safeSessionId);
   if (!isPathWithinDirectory(UPLOAD_ROOT, sessionDir)) {
@@ -119,6 +123,7 @@ function sessionPaths(sessionId: string): { sessionDir: string; markdownPath: st
   return {
     sessionDir,
     markdownPath: path.join(sessionDir, 'output.md'),
+    pdfPath: path.join(sessionDir, 'output.pdf'),
     mediaDir: path.join(sessionDir, 'media'),
   };
 }
@@ -149,6 +154,12 @@ function sanitizeAssetFilename(filename: string): string {
     throw new Error('Invalid filename');
   }
   return safe;
+}
+
+function normalizeDownloadBaseName(filename: string): string {
+  const base = path.basename(filename, path.extname(filename));
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return safe || 'converted';
 }
 
 function hasFilesInDirectory(dirPath: string): boolean {
@@ -198,8 +209,8 @@ const appUpload = multer({
   limits: { fileSize: APP_MAX_FILE_SIZE_BYTES },
   fileFilter(_req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ext !== '.docx') {
-      cb(new RequestValidationError('Only .docx files are supported'));
+    if (ext !== '.docx' && ext !== '.md' && ext !== '.markdown') {
+      cb(new RequestValidationError('Only .docx, .md, and .markdown files are supported'));
       return;
     }
     if (file.mimetype && !ALLOWED_MIME_TYPES.has(file.mimetype)) {
@@ -256,14 +267,16 @@ export function createServer(options?: {
     storage: uploadStorage,
     limits: { fileSize: maxFileSizeBytes },
     fileFilter(_req, file, cb) {
+      const ext = path.extname(file.originalname).toLowerCase();
       const isDocx =
         file.mimetype ===
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.originalname.toLowerCase().endsWith('.docx');
-      if (isDocx) {
+        ext === '.docx';
+      const isMarkdown = file.mimetype === 'text/markdown' || ext === '.md' || ext === '.markdown';
+      if (isDocx || isMarkdown) {
         cb(null, true);
       } else {
-        cb(new RequestValidationError('Only .docx files are supported'));
+        cb(new RequestValidationError('Only .docx, .md, and .markdown files are supported'));
       }
     },
   });
@@ -277,7 +290,7 @@ export function createServer(options?: {
     async (req: Request, res: Response, next: NextFunction) => {
       if (!req.file) {
         res.status(400).json({
-          error: 'No file uploaded. Send a .docx file as the "file" field.',
+          error: 'No file uploaded. Send a .docx or .md file as the "file" field.',
         });
         return;
       }
@@ -312,14 +325,26 @@ export function createServer(options?: {
         }
       };
 
-      const outputPath = path.join(tmpDir, 'output.md');
+      const requestedOutput = String(req.body?.to ?? 'markdown').toLowerCase();
+      if (requestedOutput !== 'markdown' && requestedOutput !== 'pdf') {
+        cleanup();
+        res.status(400).json({ error: 'Invalid output format. Use "markdown" or "pdf".' });
+        return;
+      }
+
+      const outputPath = path.join(tmpDir, requestedOutput === 'pdf' ? 'output.pdf' : 'output.md');
       const mediaDir = path.join(tmpDir, 'media');
 
-      const conversionOptions: ConversionOptions = {
-        format: 'gfm',
-        mediaDir,
-        timeout: timeoutMs,
-      };
+      const conversionOptions: ConversionOptions = requestedOutput === 'pdf'
+        ? {
+          format: 'pdf',
+          timeout: timeoutMs,
+        }
+        : {
+          format: 'gfm',
+          mediaDir,
+          timeout: timeoutMs,
+        };
 
       let timedOut = false;
       const timer = setTimeout(() => {
@@ -331,6 +356,32 @@ export function createServer(options?: {
       }, timeoutMs);
 
       try {
+        if (requestedOutput === 'pdf') {
+          const result = await convertToPdf({
+            inputPath: uploadedPath,
+            outputPath,
+            timeout: timeoutMs,
+          });
+          clearTimeout(timer);
+          if (timedOut) return;
+
+          const outputBuffer = await fs.promises.readFile(outputPath);
+          const downloadBaseName = normalizeDownloadBaseName(String(req.file.originalname ?? 'converted'));
+          for (const warning of result.warnings) {
+            res.append('X-Conversion-Warning', warning);
+          }
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${downloadBaseName}.pdf"`);
+          res.send(outputBuffer);
+          return;
+        }
+
+        if (!req.file.originalname.toLowerCase().endsWith('.docx')) {
+          clearTimeout(timer);
+          res.status(400).json({ error: 'Markdown output currently supports only .docx input.' });
+          return;
+        }
+
         const engine = await resolveEngine();
         const result = await engine.convert(uploadedPath, outputPath, conversionOptions);
 
@@ -435,13 +486,15 @@ export function createApp(): express.Application {
       cleanupSessions();
 
       if (!req.file) {
-        res.status(400).json({ error: 'No file uploaded. Send a .docx file as the "file" field.' });
+        res.status(400).json({ error: 'No file uploaded. Send a .docx or .md file as the "file" field.' });
         return;
       }
 
       const sessionId = createSessionId();
-      const { sessionDir, markdownPath, mediaDir } = sessionPaths(sessionId);
+      const { sessionDir, markdownPath, pdfPath, mediaDir } = sessionPaths(sessionId);
       const inputPath = req.file.path;
+      const inputExt = path.extname(String(req.file.originalname ?? '')).toLowerCase();
+      const requestedOutput = String(req.body?.to ?? 'markdown').toLowerCase();
       const uploadDirName = path.basename(String(req.file.destination ?? ''));
       const uploadFileName = path.basename(String(req.file.filename ?? ''));
 
@@ -449,7 +502,7 @@ export function createApp(): express.Application {
         if (!/^docx-upload-[a-z0-9-]+$/i.test(uploadDirName)) {
           return;
         }
-        if (!/^upload\.docx$/i.test(uploadFileName)) {
+        if (!/^upload\.(docx|md|markdown)$/i.test(uploadFileName)) {
           return;
         }
         try {
@@ -466,6 +519,37 @@ export function createApp(): express.Application {
 
       try {
         fs.mkdirSync(sessionDir, { recursive: true });
+        if (requestedOutput === 'pdf') {
+          if (inputExt !== '.docx' && inputExt !== '.md' && inputExt !== '.markdown') {
+            res.status(400).json({ error: 'Only .docx and .md files are supported' });
+            return;
+          }
+          const result = await convertToPdf({
+            inputPath,
+            outputPath: pdfPath,
+          });
+          sessions.set(sessionId, {
+            createdAt: Date.now(),
+            downloadBaseName: normalizeDownloadBaseName(String(req.file.originalname ?? 'converted')),
+          });
+          res.json({
+            sessionId,
+            warnings: result.warnings,
+            pdfUrl: `/api/download/pdf/${encodeURIComponent(sessionId)}`,
+          });
+          return;
+        }
+
+        if (requestedOutput !== 'markdown') {
+          res.status(400).json({ error: 'Invalid output format. Use "markdown" or "pdf".' });
+          return;
+        }
+
+        if (inputExt !== '.docx') {
+          res.status(400).json({ error: 'Markdown output currently supports only .docx input.' });
+          return;
+        }
+
         const adapter = new MammothAdapter();
         const result = await adapter.convert(inputPath, markdownPath, {
           format: 'gfm',
@@ -478,6 +562,7 @@ export function createApp(): express.Application {
 
         sessions.set(sessionId, {
           createdAt: Date.now(),
+          downloadBaseName: normalizeDownloadBaseName(String(req.file.originalname ?? 'converted')),
         });
 
         res.json({
@@ -518,7 +603,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -551,7 +637,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -572,7 +659,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -615,6 +703,30 @@ export function createApp(): express.Application {
     });
   });
 
+  app.get('/api/download/pdf/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
+    let sessionId: string;
+    try {
+      sessionId = normalizeSessionId(req.params['sessionId']);
+    } catch {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+
+    const { sessionDir, pdfPath } = sessionPaths(sessionId);
+    if (!fs.existsSync(pdfPath)) {
+      res.status(404).json({ error: 'PDF file not found' });
+      return;
+    }
+
+    const downloadName = `${session.downloadBaseName ?? 'converted'}.pdf`;
+    res.download(path.basename(pdfPath), downloadName, { root: sessionDir });
+  });
+
   app.get('/api/health', (_req: Request, res: Response): void => {
     res.json({ status: 'ok' });
   });
@@ -631,7 +743,7 @@ export function createApp(): express.Application {
       return;
     }
     if (err instanceof Error) {
-      const safePrefixes = ['Only .docx files are supported', 'Invalid MIME type', 'File too large'];
+      const safePrefixes = ['Only .docx, .md, and .markdown files are supported', 'Invalid MIME type', 'File too large'];
       const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
       res.status(400).json({ error: message });
       return;

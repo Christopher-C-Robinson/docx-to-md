@@ -1,4 +1,6 @@
 export type MarkdownFormat = 'gfm' | 'commonmark';
+export type OutputFormat = MarkdownFormat | 'pdf';
+export type InputFormat = 'docx' | 'markdown';
 export type TrackChangesPolicy = 'accept' | 'reject' | 'all';
 export type EngineType = 'pandoc' | 'mammoth' | 'libreoffice';
 
@@ -11,7 +13,8 @@ export interface StyleMapping {
 
 export interface ConversionOptions {
   engine?: EngineType;
-  format?: MarkdownFormat;
+  format?: OutputFormat;
+  inputFormat?: InputFormat;
   mediaDir?: string;
   trackChanges?: TrackChangesPolicy;
   luaFilters?: string[];

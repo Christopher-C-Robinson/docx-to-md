@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ConversionOptions, EngineType, MarkdownFormat, TrackChangesPolicy } from '../../core/types';
+import { ConversionOptions, EngineType, OutputFormat, TrackChangesPolicy } from '../../core/types';
 import { resolveEngine } from '../../core/engines/registry';
 import { inlineImages as inlineImagesTransform } from '../../core/assets/inlineImages';
 
@@ -45,9 +45,16 @@ export async function batchCommand(
 
   const sharedMediaDir = opts.mediaDir ? resolveOutputPath(opts.mediaDir) : undefined;
 
+  const outputFormat = (opts.to as OutputFormat | undefined) ?? 'gfm';
+  if (outputFormat === 'pdf' && opts.engine && opts.engine !== 'pandoc') {
+    console.error('Error: PDF batch conversion currently requires the pandoc engine');
+    process.exit(1);
+  }
+
   const options: ConversionOptions = {
     engine: opts.engine as EngineType | undefined,
-    format: (opts.to as MarkdownFormat | undefined) ?? 'gfm',
+    format: outputFormat,
+    inputFormat: outputFormat === 'pdf' ? 'docx' : undefined,
     mediaDir: sharedMediaDir,
     trackChanges: opts.trackChanges as TrackChangesPolicy | undefined,
     timeout: opts.timeout ? parseInt(opts.timeout, 10) : undefined,
@@ -62,7 +69,7 @@ export async function batchCommand(
 
   console.error(`Found ${docxFiles.length} DOCX file(s), converting with ${concurrency} worker(s)...`);
 
-  const engine = await resolveEngine(options.engine);
+  const engine = await resolveEngine(outputFormat === 'pdf' ? 'pandoc' : options.engine);
   console.error(`Using engine: ${engine.name}`);
 
   let succeeded = 0;
@@ -76,11 +83,13 @@ export async function batchCommand(
     if (!file) return;
 
     const rel = path.relative(resolvedInput, file);
-    const outPath = path.join(outDir, rel.replace(/\.docx$/i, '.md'));
+    const outPath = path.join(outDir, rel.replace(/\.docx$/i, outputFormat === 'pdf' ? '.pdf' : '.md'));
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
     try {
-      const perFileMediaDir = sharedMediaDir ?? (opts.inlineImages ? path.join(path.dirname(outPath), 'media') : undefined);
+      const perFileMediaDir = outputFormat === 'pdf'
+        ? undefined
+        : (sharedMediaDir ?? (opts.inlineImages ? path.join(path.dirname(outPath), 'media') : undefined));
       const perFileOptions: ConversionOptions = {
         ...options,
         mediaDir: perFileMediaDir,
@@ -89,7 +98,7 @@ export async function batchCommand(
       for (const w of result.warnings) {
         console.error(`[${rel}] Warning: ${w}`);
       }
-      if (opts.inlineImages) {
+      if (opts.inlineImages && outputFormat !== 'pdf') {
         const inlinedMarkdown = inlineImagesTransform(result.markdown, path.dirname(outPath));
         fs.writeFileSync(outPath, inlinedMarkdown, 'utf8');
       }

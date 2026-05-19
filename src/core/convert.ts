@@ -4,7 +4,9 @@ import {
   ConversionOptions,
   ConversionResult,
   EngineType,
+  InputFormat,
   MarkdownFormat,
+  OutputFormat,
   StyleMapping,
   TrackChangesPolicy,
 } from './types';
@@ -15,7 +17,7 @@ export interface ConvertDocxOptions {
   inputPath: string;
   outputPath: string;
   engine?: EngineType;
-  format?: MarkdownFormat;
+  format?: OutputFormat;
   mediaDir?: string;
   trackChanges?: TrackChangesPolicy;
   luaFilters?: string[];
@@ -29,13 +31,38 @@ export interface ConvertDocxResult extends ConversionResult {
   engineName: EngineType;
 }
 
+export interface ConvertToPdfOptions {
+  inputPath: string;
+  outputPath: string;
+  engine?: EngineType;
+  trackChanges?: TrackChangesPolicy;
+  luaFilters?: string[];
+  timeout?: number;
+}
+
+export interface ConvertToPdfResult extends ConversionResult {
+  engineName: EngineType;
+}
+
 export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocxResult> {
+  if (opts.format === 'pdf') {
+    return convertToPdf({
+      inputPath: opts.inputPath,
+      outputPath: opts.outputPath,
+      engine: opts.engine,
+      trackChanges: opts.trackChanges,
+      luaFilters: opts.luaFilters,
+      timeout: opts.timeout,
+    });
+  }
+
   const resolvedOutputDir = path.dirname(opts.outputPath);
   const effectiveMediaDir = opts.mediaDir ?? (opts.inlineImages ? path.join(resolvedOutputDir, 'media') : undefined);
+  const markdownFormat: MarkdownFormat = opts.format === 'commonmark' ? 'commonmark' : 'gfm';
 
   const options: ConversionOptions = {
     engine: opts.engine,
-    format: opts.format ?? 'gfm',
+    format: markdownFormat,
     mediaDir: effectiveMediaDir,
     trackChanges: opts.trackChanges,
     luaFilters: opts.luaFilters,
@@ -47,11 +74,44 @@ export async function convertDocx(opts: ConvertDocxOptions): Promise<ConvertDocx
   options.engine = engine.name;
   const result = await engine.convert(opts.inputPath, opts.outputPath, options);
 
-  if (opts.inlineImages) {
+  if (opts.inlineImages && options.format !== 'pdf') {
     const inlinedMarkdown = inlineImagesTransform(result.markdown, resolvedOutputDir);
     fs.writeFileSync(opts.outputPath, inlinedMarkdown, 'utf8');
     return { ...result, markdown: inlinedMarkdown, engineName: engine.name };
   }
 
+  return { ...result, engineName: engine.name };
+}
+
+export async function convertToPdf(opts: ConvertToPdfOptions): Promise<ConvertToPdfResult> {
+  const inputExt = path.extname(opts.inputPath).toLowerCase();
+  let inputFormat: InputFormat;
+  if (inputExt === '.docx') {
+    inputFormat = 'docx';
+  } else if (inputExt === '.md' || inputExt === '.markdown') {
+    inputFormat = 'markdown';
+  } else {
+    throw new Error('PDF conversion supports only .docx or .md inputs');
+  }
+
+  if (opts.engine && opts.engine !== 'pandoc') {
+    throw new Error('PDF conversion currently requires the pandoc engine');
+  }
+
+  const engine = await resolveEngine('pandoc');
+  if (engine.name !== 'pandoc') {
+    throw new Error('PDF conversion requires Pandoc. Please install Pandoc and retry.');
+  }
+
+  const options: ConversionOptions = {
+    engine: engine.name,
+    format: 'pdf',
+    inputFormat,
+    trackChanges: inputFormat === 'docx' ? opts.trackChanges : undefined,
+    luaFilters: opts.luaFilters,
+    timeout: opts.timeout,
+  };
+
+  const result = await engine.convert(opts.inputPath, opts.outputPath, options);
   return { ...result, engineName: engine.name };
 }
