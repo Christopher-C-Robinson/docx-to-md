@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.17] – 2026-05-19
+
+### Added
+- add PDF conversion support for docx and markdown
+- add bidirectional MD<->DOCX conversion (Markdown to DOCX)
+
+### Fixed
+- align api extension validation messages with accepted formats
+- normalize pdf naming and validate cli output format flag
+- use WeakMap registry for md upload path to prevent path-injection taint
+
+### Changed
+- Merge pull request #83 from Christopher-C-Robinson/copilot/add-bidirectional-conversion
+- Merge remote-tracking branch 'origin/main' into copilot/add-bidirectional-conversion
+- Merge pull request #89 from Christopher-C-Robinson/dependabot/npm_and_yarn/typescript-6.0.2
+- Merge pull request #102 from Christopher-C-Robinson/copilot/add-pdf-output-support
+- Merge origin/main and resolve dependency conflicts
+- Merge pull request #100 from Christopher-C-Robinson/dependabot/npm_and_yarn/dev-dependencies-78c66241c3
+- Merge pull request #104 from Christopher-C-Robinson/dependabot/npm_and_yarn/ip-address-10.2.0
+- Merge remote-tracking branch 'origin/main' into dependabot/npm_and_yarn/ip-address-10.2.0
+- bump the dev-dependencies group across 1 directory with 3 updates
+- bump ip-address from 10.1.0 to 10.2.0 (via audit fix)
+- Merge pull request #98 from Christopher-C-Robinson/dependabot/npm_and_yarn/brace-expansion-1.1.14
+- Merge pull request #97 from Christopher-C-Robinson/dependabot/npm_and_yarn/lodash-4.18.1
+- Merge pull request #96 from Christopher-C-Robinson/dependabot/npm_and_yarn/electron-41.1.0
+- Merge pull request #94 from Christopher-C-Robinson/dependabot/npm_and_yarn/production-dependencies-da8410312b
+- Merge pull request #92 from Christopher-C-Robinson/dependabot/npm_and_yarn/path-to-regexp-8.4.2
+- Merge pull request #85 from Christopher-C-Robinson/dependabot/npm_and_yarn/handlebars-4.7.9
+- clarify pdf download filename variable naming
+- Merge pull request #84 from Christopher-C-Robinson/dependabot/npm_and_yarn/multi-bf05dc1ecf
+- address review nits in pdf conversion updates
+- tighten pdf download naming and web format validation helpers
+- Initial plan
+- bump brace-expansion from 1.1.12 to 1.1.14
+- bump lodash from 4.17.23 to 4.18.1
+- bump electron from 41.0.2 to 41.1.0
+- bump the production-dependencies group with 2 updates
+- bump path-to-regexp from 8.3.0 to 8.4.2
+- bump typescript from 5.9.3 to 6.0.2
+- bump handlebars from 4.7.8 to 4.7.9
+- bump picomatch
+- Initial plan
+
 ## [0.1.16] – 2026-04-01
 
 ### Changed
