@@ -210,7 +210,7 @@ const appUpload = multer({
   fileFilter(_req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ext !== '.docx' && ext !== '.md' && ext !== '.markdown') {
-      cb(new RequestValidationError('Only .docx and .md files are supported'));
+      cb(new RequestValidationError('Only .docx, .md, and .markdown files are supported'));
       return;
     }
     if (file.mimetype && !ALLOWED_MIME_TYPES.has(file.mimetype)) {
@@ -276,7 +276,7 @@ export function createServer(options?: {
       if (isDocx || isMarkdown) {
         cb(null, true);
       } else {
-        cb(new RequestValidationError('Only .docx and .md files are supported'));
+        cb(new RequestValidationError('Only .docx, .md, and .markdown files are supported'));
       }
     },
   });
@@ -743,7 +743,7 @@ export function createApp(): express.Application {
       return;
     }
     if (err instanceof Error) {
-      const safePrefixes = ['Only .docx and .md files are supported', 'Invalid MIME type', 'File too large'];
+      const safePrefixes = ['Only .docx, .md, and .markdown files are supported', 'Invalid MIME type', 'File too large'];
       const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
       res.status(400).json({ error: message });
       return;
