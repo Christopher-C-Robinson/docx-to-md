@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { EngineAdapter } from '../interface';
-import { ConversionOptions, ConversionResult, EngineType } from '../../types';
+import { ConversionOptions, ConversionResult, EngineType, InputFormat } from '../../types';
 import { MammothAdapter } from '../mammoth/adapter';
 import {
   MAX_STDERR_BYTES,
@@ -17,6 +17,11 @@ const PANDOC_TIMEOUT_MS = 60_000;
 const PANDOC_MEM_LIMIT_MB = 1024;
 /** CPU-time limit (seconds) for the pandoc process on Linux. */
 const PANDOC_CPU_LIMIT_SECS = 120;
+
+function detectPandocInputFormat(inputPath: string): InputFormat {
+  const ext = path.extname(inputPath).toLowerCase();
+  return ext === '.md' || ext === '.markdown' ? 'markdown' : 'docx';
+}
 
 export class PandocAdapter implements EngineAdapter {
   readonly name: EngineType = 'pandoc';
@@ -45,6 +50,7 @@ export class PandocAdapter implements EngineAdapter {
 
     const format = options.format ?? 'gfm';
     const timeout = options.timeout ?? PANDOC_TIMEOUT_MS;
+    const inputFormat: InputFormat = options.inputFormat ?? detectPandocInputFormat(inputPath);
 
     validateInputFile(inputPath, options.maxFileSizeBytes);
 
@@ -53,7 +59,8 @@ export class PandocAdapter implements EngineAdapter {
     validateShellSafePath(inputPath);
     validateShellSafePath(outputPath);
 
-    const cmd: string[] = ['-f', 'docx', '-t', format];
+    const sourceFormat = inputFormat === 'markdown' ? 'gfm' : 'docx';
+    const cmd: string[] = ['-f', sourceFormat, '-t', format];
 
     if (options.mediaDir) {
       const mediaDir = path.resolve(options.mediaDir);
@@ -76,7 +83,7 @@ export class PandocAdapter implements EngineAdapter {
     try {
       await this.runPandoc(cmd, timeout);
     } catch (err) {
-      if (this.fallback) {
+      if (this.fallback && format !== 'pdf') {
         const errMsg = err instanceof Error ? err.message : String(err);
         warnings.push(`Pandoc failed: ${errMsg}; falling back to ${this.fallback.name}`);
         try {
@@ -97,7 +104,7 @@ export class PandocAdapter implements EngineAdapter {
       throw err;
     }
 
-    const markdown = fs.readFileSync(outputPath, 'utf8');
+    const markdown = format === 'pdf' ? '' : fs.readFileSync(outputPath, 'utf8');
 
     if (options.mediaDir) {
       try {

@@ -236,4 +236,19 @@ describe('batch command', () => {
       ])
     );
   });
+
+  test('uses pandoc and writes .pdf files when --to pdf is selected', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReaddirSync.mockReturnValue([dirent('doc1.docx', false)]);
+    mockResolveEngine.mockResolvedValue(makeEngine());
+
+    await batchCommand(inputDir, { jobs: '1', to: 'pdf' });
+
+    expect(mockResolveEngine).toHaveBeenCalledWith('pandoc');
+    expect(mockConvert).toHaveBeenCalledWith(
+      path.join(path.resolve(inputDir), 'doc1.docx'),
+      path.join(path.resolve(inputDir), 'doc1.pdf'),
+      expect.objectContaining({ format: 'pdf', inputFormat: 'docx' })
+    );
+  });
 });

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { convertDocx, ConvertDocxOptions } from '../../src/core/convert';
+import { convertDocx, convertToPdf, ConvertDocxOptions, ConvertToPdfOptions } from '../../src/core/convert';
 import { resolveEngine } from '../../src/core/engines/registry';
 import { ConversionResult } from '../../src/core/types';
 
@@ -163,5 +163,51 @@ describe('convertDocx', () => {
     };
 
     await expect(convertDocx(opts)).rejects.toThrow('engine failure');
+  });
+});
+
+describe('convertToPdf', () => {
+  const mockPandocEngine = {
+    name: 'pandoc' as const,
+    isAvailable: jest.fn().mockResolvedValue(true),
+    convert: jest.fn().mockResolvedValue(mockResult),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (resolveEngine as jest.Mock).mockResolvedValue(mockPandocEngine);
+    mockPandocEngine.convert.mockResolvedValue(mockResult);
+  });
+
+  test('converts DOCX input to PDF via pandoc', async () => {
+    const opts: ConvertToPdfOptions = {
+      inputPath: '/input/file.docx',
+      outputPath: '/output/file.pdf',
+    };
+
+    await convertToPdf(opts);
+
+    expect(resolveEngine).toHaveBeenCalledWith('pandoc');
+    expect(mockPandocEngine.convert).toHaveBeenCalledWith(
+      '/input/file.docx',
+      '/output/file.pdf',
+      expect.objectContaining({ format: 'pdf', inputFormat: 'docx' })
+    );
+  });
+
+  test('converts Markdown input to PDF via pandoc', async () => {
+    const opts: ConvertToPdfOptions = {
+      inputPath: '/input/file.md',
+      outputPath: '/output/file.pdf',
+    };
+
+    await convertToPdf(opts);
+
+    expect(resolveEngine).toHaveBeenCalledWith('pandoc');
+    expect(mockPandocEngine.convert).toHaveBeenCalledWith(
+      '/input/file.md',
+      '/output/file.pdf',
+      expect.objectContaining({ format: 'pdf', inputFormat: 'markdown' })
+    );
   });
 });

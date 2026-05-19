@@ -7,5 +7,5 @@ export * from './assets/inlineImages';
 export * from './metadata/extractor';
 export * from './engines/interface';
 export { getEngine, resolveEngine } from './engines/registry';
-export { convertDocx } from './convert';
-export type { ConvertDocxOptions, ConvertDocxResult } from './convert';
+export { convertDocx, convertToPdf, renderDocx } from './convert';
+export type { ConvertDocxOptions, ConvertDocxResult, ConvertToPdfOptions, ConvertToPdfResult, RenderDocxOptions } from './convert';

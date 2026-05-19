@@ -1,6 +1,6 @@
 {
   "name": "docx-to-md",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Reliable DOCX to Markdown conversion with pluggable engine architecture",
   "main": "dist/core/index.js",
   "scripts": {
@@ -34,10 +34,10 @@
     "archiver": "^7.0.1",
     "commander": "^14.0.3",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
+    "express-rate-limit": "^8.3.2",
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
-    "turndown": "^7.2.2",
+    "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
@@ -45,16 +45,16 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.5.0",
+    "@types/node": "^25.9.0",
     "@types/supertest": "^7.2.0",
     "@types/turndown": "^5.0.6",
-    "electron": "^41.0.2",
+    "electron": "^41.1.0",
     "electron-builder": "^26.8.1",
-    "jest": "^30.3.0",
+    "jest": "^30.4.2",
     "jszip": "^3.10.1",
     "supertest": "^7.2.2",
-    "ts-jest": "^29.4.6",
-    "typescript": "^5.9.3"
+    "ts-jest": "^29.4.10",
+    "typescript": "^6.0.2"
   },
   "bin": {
     "docx2md": "dist/cli/index.js"
