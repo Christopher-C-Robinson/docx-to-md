@@ -134,7 +134,9 @@ export async function checkForUpdate(
   httpGet?: HttpGetFn
 ): Promise<string | null> {
   try {
-    const latest = await fetchLatestVersion(timeoutMs, httpGet);
+    const latest = httpGet
+      ? await fetchLatestVersion(timeoutMs, httpGet)
+      : await fetchLatestVersion(timeoutMs);
     if (latest && isNewerVersion(currentVersion, latest)) {
       return latest;
     }
@@ -143,4 +145,3 @@ export async function checkForUpdate(
     return null;
   }
 }
-

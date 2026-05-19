@@ -13,12 +13,15 @@ async function notifyIfUpdateAvailable(): Promise<void> {
   try {
     const latest = await checkForUpdate(CURRENT_VERSION, 4000);
     if (latest) {
+      const BOX_WIDTH = 60; // inner width between ║ and ║
+      const line = `  Update available: v${CURRENT_VERSION} → v${latest}`;
+      const padded = line.padEnd(BOX_WIDTH);
       process.stderr.write(
-        `\n  ╔══════════════════════════════════════════════════════════╗\n` +
-        `  ║  Update available: v${CURRENT_VERSION} → v${latest}`.padEnd(63) + `║\n` +
+        `\n  ╔${'═'.repeat(BOX_WIDTH)}╗\n` +
+        `  ║${padded}║\n` +
         `  ║  Run: npm install -g docx-to-md                          ║\n` +
         `  ║  https://github.com/Christopher-C-Robinson/docx-to-md    ║\n` +
-        `  ╚══════════════════════════════════════════════════════════╝\n\n`
+        `  ╚${'═'.repeat(BOX_WIDTH)}╝\n\n`
       );
     }
   } catch {
