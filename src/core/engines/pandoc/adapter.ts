@@ -18,6 +18,11 @@ const PANDOC_MEM_LIMIT_MB = 1024;
 /** CPU-time limit (seconds) for the pandoc process on Linux. */
 const PANDOC_CPU_LIMIT_SECS = 120;
 
+function detectPandocInputFormat(inputPath: string): InputFormat {
+  const ext = path.extname(inputPath).toLowerCase();
+  return ext === '.md' || ext === '.markdown' ? 'markdown' : 'docx';
+}
+
 export class PandocAdapter implements EngineAdapter {
   readonly name: EngineType = 'pandoc';
   private readonly fallback: EngineAdapter | null;
@@ -45,12 +50,7 @@ export class PandocAdapter implements EngineAdapter {
 
     const format = options.format ?? 'gfm';
     const timeout = options.timeout ?? PANDOC_TIMEOUT_MS;
-    const inputFormat: InputFormat =
-      options.inputFormat ??
-      ((() => {
-        const ext = path.extname(inputPath).toLowerCase();
-        return ext === '.md' || ext === '.markdown' ? 'markdown' : 'docx';
-      })());
+    const inputFormat: InputFormat = options.inputFormat ?? detectPandocInputFormat(inputPath);
 
     validateInputFile(inputPath, options.maxFileSizeBytes);
 

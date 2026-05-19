@@ -36,7 +36,7 @@ export async function convertCommand(
   }
 
   if (to !== 'pdf' && !isDocx) {
-    console.error('Error: Markdown output is supported only for .docx input files');
+    console.error('Error: Markdown/CommonMark output is supported only for .docx input files');
     process.exit(1);
   }
 

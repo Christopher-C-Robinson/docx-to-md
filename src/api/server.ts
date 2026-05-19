@@ -724,7 +724,7 @@ export function createApp(): express.Application {
     }
 
     const downloadName = `${session.downloadBaseName ?? 'converted'}.pdf`;
-    res.download('output.pdf', downloadName, { root: sessionDir });
+    res.download(path.basename(pdfPath), downloadName, { root: sessionDir });
   });
 
   app.get('/api/health', (_req: Request, res: Response): void => {
@@ -743,7 +743,7 @@ export function createApp(): express.Application {
       return;
     }
     if (err instanceof Error) {
-      const safePrefixes = ['Only .docx files are supported', 'Only .docx and .md files are supported', 'Invalid MIME type', 'File too large'];
+      const safePrefixes = ['Only .docx and .md files are supported', 'Invalid MIME type', 'File too large'];
       const message = safePrefixes.some((p) => err.message.startsWith(p)) ? err.message : 'Invalid request';
       res.status(400).json({ error: message });
       return;
