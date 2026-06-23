@@ -207,7 +207,7 @@
       border: 1px solid var(--border);
     }
     .btn-secondary:hover { background: var(--border); }
-    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
 
     /* ── Tab row ───────────────────────────────── */
     .tab-bar {
@@ -574,6 +574,16 @@
     let isProcessing = false;
     let isBatchRunning = false;
     let nextActionAllowedAt = 0;
+    // Small cooldown to absorb accidental double-clicks without feeling sluggish.
+    const ACTION_THROTTLE_MS = 600;
+    const RUNTIME_ERROR_PATTERNS = [
+      /^Cannot (read|set|access)\b/i,
+      /\bis not defined\b/i,
+      /\bis not a function\b/i,
+      /^TypeError\b/i,
+      /^ReferenceError\b/i,
+      /^SyntaxError\b/i,
+    ];
 
     const dropZone      = document.getElementById('drop-zone');
     const fileInput     = document.getElementById('file-input');
@@ -641,7 +651,8 @@
           }
           return `Request failed (${statusCode}). Please try again.`;
         }
-        if (/(cannot|undefined|null|typeerror|referenceerror|syntaxerror)/i.test(message)) {
+        const isRuntimeLikeError = RUNTIME_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+        if (isRuntimeLikeError) {
           return 'Something unexpected happened while processing your file. Please try again.';
         }
         return message || 'Request failed. Please try again.';
@@ -658,7 +669,7 @@
 
     function syncActionAvailability() {
       const hasSession = Boolean(sessionId);
-      const enabled = hasSession && !isProcessing;
+      const enabled = hasSession && !isProcessing && !isBatchRunning;
       dlMdBtn.disabled = !enabled;
       dlPdfBtn.disabled = !enabled;
       dlZipBtn.disabled = !enabled;
@@ -667,6 +678,10 @@
     }
 
     function guardSessionAction(actionName) {
+      if (isBatchRunning) {
+        showNotice('Please wait for batch conversion to finish before starting a download.');
+        return false;
+      }
       if (isProcessing) {
         showNotice('Conversion is still in progress. Please wait for it to finish.');
         return false;
@@ -684,7 +699,7 @@
         showNotice('Please wait a moment before trying that again.');
         return false;
       }
-      nextActionAllowedAt = now + 900;
+      nextActionAllowedAt = now + ACTION_THROTTLE_MS;
       return true;
     }
 
@@ -790,11 +805,7 @@
 
     // ── Copy to clipboard ──────────────────────────────────────────────────
     copyMdBtn.addEventListener('click', async () => {
-      if (!guardSessionAction('Copy') || !guardRapidAction()) return;
-      if (!markdownRaw) {
-        showNotice('No markdown is available to copy yet.');
-        return;
-      }
+      if (!guardRapidAction() || !guardSessionAction('Copy')) return;
       try {
         await navigator.clipboard.writeText(markdownRaw);
         copyMdBtn.textContent = '✓ Copied!';
@@ -807,24 +818,24 @@
 
     // ── Download markdown ──────────────────────────────────────────────────
     dlMdBtn.addEventListener('click', () => {
-      if (!guardSessionAction('Download') || !guardRapidAction()) return;
+      if (!guardRapidAction() || !guardSessionAction('Download')) return;
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
     });
 
     dlPdfBtn.addEventListener('click', () => {
-      if (!guardSessionAction('Download') || !guardRapidAction()) return;
+      if (!guardRapidAction() || !guardSessionAction('Download')) return;
       window.location.href = `/api/download/pdf/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download zip (markdown + media) ───────────────────────────────────
     dlZipBtn.addEventListener('click', () => {
-      if (!guardSessionAction('Download') || !guardRapidAction()) return;
+      if (!guardRapidAction() || !guardSessionAction('Download')) return;
       window.location.href = `/api/download/zip/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download images ────────────────────────────────────────────────────
     dlImgsBtn.addEventListener('click', () => {
-      if (!guardSessionAction('Download') || !guardRapidAction()) return;
+      if (!guardRapidAction() || !guardSessionAction('Download')) return;
       window.location.href = `/api/download/images/${encodeURIComponent(sessionId)}`;
     });
 
@@ -931,6 +942,7 @@
       batchSection.classList.add('visible');
       batchTitle.textContent = `Batch Conversion — ${files.length} file${files.length !== 1 ? 's' : ''}`;
       batchConvertBtn.disabled = false;
+      syncActionAvailability();
     }
 
     function renderBatchList() {
@@ -974,12 +986,12 @@
       const idx = parseInt(btn.getAttribute('data-batch-index'), 10);
       const action = btn.getAttribute('data-batch-action');
       if (!Number.isFinite(idx)) return;
+      if (!guardRapidAction()) return;
       const item = batchQueue[idx];
       if (!item?.sessionId) {
         showNotice('This file is still processing. Please wait.');
         return;
       }
-      if (!guardRapidAction()) return;
       if (action === 'md') {
         window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'pdf') {
@@ -999,6 +1011,7 @@
         return;
       }
       isBatchRunning = true;
+      syncActionAvailability();
       batchConvertBtn.disabled = true;
       batchResetBtn.disabled = true;
       showStatus('Batch conversion in progress…');
@@ -1027,6 +1040,7 @@
         showNotice('Batch conversion finished. Download actions are now available.');
       } finally {
         isBatchRunning = false;
+        syncActionAvailability();
         batchConvertBtn.disabled = false;
         batchResetBtn.disabled = false;
       }
