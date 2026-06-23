@@ -207,7 +207,7 @@
       border: 1px solid var(--border);
     }
     .btn-secondary:hover { background: var(--border); }
-    .btn-secondary:disabled { opacity: 0.4; cursor: default; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
 
     /* ── Tab row ───────────────────────────────── */
     .tab-bar {
@@ -571,6 +571,9 @@
 
     let markdownRaw = '';
     let sessionId = '';
+    let isProcessing = false;
+    let isBatchRunning = false;
+    let nextActionAllowedAt = 0;
 
     const dropZone      = document.getElementById('drop-zone');
     const fileInput     = document.getElementById('file-input');
@@ -626,12 +629,63 @@
 
     function toUserError(err) {
       if (err instanceof Error) {
-        if (err.message.includes('Failed to fetch')) {
+        const message = String(err.message || '').trim();
+        if (message.includes('Failed to fetch')) {
           return 'Could not reach the local conversion server. Please restart the app and try again.';
         }
-        return err.message;
+        const statusMatch = message.match(/^Server error\s+(\d+)/i);
+        if (statusMatch) {
+          const statusCode = Number(statusMatch[1]);
+          if (statusCode >= 500) {
+            return 'The conversion service encountered an issue. Please wait a moment and try again.';
+          }
+          return `Request failed (${statusCode}). Please try again.`;
+        }
+        if (/(cannot|undefined|null|typeerror|referenceerror|syntaxerror)/i.test(message)) {
+          return 'Something unexpected happened while processing your file. Please try again.';
+        }
+        return message || 'Request failed. Please try again.';
       }
       return 'Request failed. Please try again.';
+    }
+
+    function showNotice(msg) {
+      statusText.textContent = msg;
+      statusBar.classList.remove('error');
+      spinner.style.display = 'none';
+      statusBar.classList.add('visible');
+    }
+
+    function syncActionAvailability() {
+      const hasSession = Boolean(sessionId);
+      const enabled = hasSession && !isProcessing;
+      dlMdBtn.disabled = !enabled;
+      dlPdfBtn.disabled = !enabled;
+      dlZipBtn.disabled = !enabled;
+      dlImgsBtn.disabled = !enabled;
+      copyMdBtn.disabled = !enabled || !markdownRaw;
+    }
+
+    function guardSessionAction(actionName) {
+      if (isProcessing) {
+        showNotice('Conversion is still in progress. Please wait for it to finish.');
+        return false;
+      }
+      if (!sessionId) {
+        showNotice(`${actionName} is temporarily unavailable. Convert a file first.`);
+        return false;
+      }
+      return true;
+    }
+
+    function guardRapidAction() {
+      const now = Date.now();
+      if (now < nextActionAllowedAt) {
+        showNotice('Please wait a moment before trying that again.');
+        return false;
+      }
+      nextActionAllowedAt = now + 900;
+      return true;
     }
 
     async function readApiResponse(res) {
@@ -731,10 +785,16 @@
       resetBtn.style.display = 'none';
       dropZone.style.display = '';
       fileInput.value = '';
+      syncActionAvailability();
     }
 
     // ── Copy to clipboard ──────────────────────────────────────────────────
     copyMdBtn.addEventListener('click', async () => {
+      if (!guardSessionAction('Copy') || !guardRapidAction()) return;
+      if (!markdownRaw) {
+        showNotice('No markdown is available to copy yet.');
+        return;
+      }
       try {
         await navigator.clipboard.writeText(markdownRaw);
         copyMdBtn.textContent = '✓ Copied!';
@@ -747,34 +807,40 @@
 
     // ── Download markdown ──────────────────────────────────────────────────
     dlMdBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!guardSessionAction('Download') || !guardRapidAction()) return;
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
     });
 
     dlPdfBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!guardSessionAction('Download') || !guardRapidAction()) return;
       window.location.href = `/api/download/pdf/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download zip (markdown + media) ───────────────────────────────────
     dlZipBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!guardSessionAction('Download') || !guardRapidAction()) return;
       window.location.href = `/api/download/zip/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download images ────────────────────────────────────────────────────
     dlImgsBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!guardSessionAction('Download') || !guardRapidAction()) return;
       window.location.href = `/api/download/images/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Single-file convert ────────────────────────────────────────────────
     async function handleFile(file) {
+      if (isProcessing) {
+        showNotice('A conversion is already in progress. Please wait.');
+        return;
+      }
       if (!isValidInputFile(file.name)) {
         showError(formatFileSupportMessage());
         return;
       }
 
+      isProcessing = true;
+      syncActionAvailability();
       dropZone.style.display = 'none';
       resultSection.classList.remove('visible');
       imagesSection.classList.remove('visible');
@@ -842,6 +908,9 @@
         resetBtn.style.display = '';
       } catch (err) {
         showError(toUserError(err));
+      } finally {
+        isProcessing = false;
+        syncActionAvailability();
       }
     }
 
@@ -906,7 +975,11 @@
       const action = btn.getAttribute('data-batch-action');
       if (!Number.isFinite(idx)) return;
       const item = batchQueue[idx];
-      if (!item?.sessionId) return;
+      if (!item?.sessionId) {
+        showNotice('This file is still processing. Please wait.');
+        return;
+      }
+      if (!guardRapidAction()) return;
       if (action === 'md') {
         window.location.href = `/api/download/markdown/${encodeURIComponent(item.sessionId)}`;
       } else if (action === 'pdf') {
@@ -921,29 +994,42 @@
     batchConvertBtn.addEventListener('click', runBatch);
 
     async function runBatch() {
-      batchConvertBtn.disabled = true;
-      for (let i = 0; i < batchQueue.length; i++) {
-        const item = batchQueue[i];
-        if (item.status === 'done') continue;
-        item.status = 'running';
-        updateBatchItem(i);
-
-        try {
-          const formData = new FormData();
-          formData.append('file', item.file);
-          formData.append('to', outputFormat());
-          const res = await fetch('/api/convert', { method: 'POST', body: formData });
-          const data = await readApiResponse(res);
-          item.sessionId = data.sessionId;
-          item.hasImages = Array.isArray(data.images) && data.images.length > 0;
-          item.status = 'done';
-        } catch (err) {
-          item.status = 'error';
-          item.error = toUserError(err);
-        }
-        updateBatchItem(i);
+      if (isBatchRunning) {
+        showNotice('Batch conversion is already in progress. Please wait.');
+        return;
       }
-      batchConvertBtn.disabled = false;
+      isBatchRunning = true;
+      batchConvertBtn.disabled = true;
+      batchResetBtn.disabled = true;
+      showStatus('Batch conversion in progress…');
+      try {
+        for (let i = 0; i < batchQueue.length; i++) {
+          const item = batchQueue[i];
+          if (item.status === 'done') continue;
+          item.status = 'running';
+          updateBatchItem(i);
+
+          try {
+            const formData = new FormData();
+            formData.append('file', item.file);
+            formData.append('to', outputFormat());
+            const res = await fetch('/api/convert', { method: 'POST', body: formData });
+            const data = await readApiResponse(res);
+            item.sessionId = data.sessionId;
+            item.hasImages = Array.isArray(data.images) && data.images.length > 0;
+            item.status = 'done';
+          } catch (err) {
+            item.status = 'error';
+            item.error = toUserError(err);
+          }
+          updateBatchItem(i);
+        }
+        showNotice('Batch conversion finished. Download actions are now available.');
+      } finally {
+        isBatchRunning = false;
+        batchConvertBtn.disabled = false;
+        batchResetBtn.disabled = false;
+      }
     }
 
     batchResetBtn.addEventListener('click', () => {
@@ -969,6 +1055,8 @@
       dropZone.style.display = '';
       resetBtn.style.display = '';
     }
+
+    syncActionAvailability();
 
     // ── Update notification ────────────────────────────────────────────────
     (async function checkForAppUpdate() {
