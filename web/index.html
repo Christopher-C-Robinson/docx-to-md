@@ -870,7 +870,6 @@
 
     function startBatch(files) {
       sessionId = '';
-      isProcessing = false;
       batchQueue = files.map(f => ({ file: f, sessionId: null, status: 'pending', error: null, hasImages: false }));
       renderBatchList();
       dropZone.style.display = 'none';
