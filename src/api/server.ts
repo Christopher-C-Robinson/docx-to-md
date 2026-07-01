@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import archiver from 'archiver';
+import { ZipArchive, Archiver } from 'archiver';
 import rateLimit from 'express-rate-limit';
 import { resolveEngine } from '../core/engines/registry';
 import { convertToPdf } from '../core/convert';
@@ -178,12 +178,12 @@ function hasFilesInDirectory(dirPath: string): boolean {
 function pipeZipArchive(
   res: Response,
   filename: string,
-  buildArchive: (archive: archiver.Archiver) => void
+  buildArchive: (archive: Archiver) => void
 ): void {
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-  const archive = archiver('zip', { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   archive.on('error', (err) => {
     if (res.headersSent || res.writableEnded) {
       res.destroy(err);
