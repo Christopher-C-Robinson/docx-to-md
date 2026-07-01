@@ -32,11 +32,11 @@
   "homepage": "https://github.com/Christopher-C-Robinson/docx-to-md#readme",
   "dependencies": {
     "archiver": "^8.0.0",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
     "mammoth": "^1.12.0",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   },
@@ -48,7 +48,7 @@
     "@types/node": "^25.9.0",
     "@types/supertest": "^7.2.0",
     "@types/turndown": "^5.0.6",
-    "electron": "^41.1.0",
+    "electron": "^42.2.0",
     "electron-builder": "^26.8.1",
     "jest": "^30.4.2",
     "jszip": "^3.10.1",
