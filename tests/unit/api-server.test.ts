@@ -2,7 +2,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import request from 'supertest';
-import { createServer, MAX_FILE_SIZE_BYTES, DEFAULT_TIMEOUT_MS, mimeForExt } from '../../src/api/server';
+import {
+  createServer,
+  createApp,
+  MAX_FILE_SIZE_BYTES,
+  DEFAULT_TIMEOUT_MS,
+  mimeForExt,
+} from '../../src/api/server';
 import * as coreConvert from '../../src/core/convert';
 
 // ---------------------------------------------------------------------------
@@ -121,6 +127,37 @@ describe('POST /convert – successful conversion (corpus)', () => {
       .readdirSync(os.tmpdir())
       .filter((f) => !tmpBefore.has(f) && !f.startsWith('docx-to-md-'));
     expect(uploadedFiles).toHaveLength(0);
+  });
+});
+
+describe('GET /api/download/zip/:sessionId – in-progress safeguards', () => {
+  test('repeated requests with unavailable output return 404 predictably', async () => {
+    const app = createApp();
+    const missingSessionId = '00000000-0000-4000-8000-000000000000';
+    const errorFrom = (res: request.Response): string => {
+      if (res.body && typeof res.body.error === 'string') {
+        return res.body.error;
+      }
+      try {
+        const parsed = JSON.parse(res.text || '{}');
+        return typeof parsed.error === 'string' ? parsed.error : '';
+      } catch {
+        return '';
+      }
+    };
+
+    const [first, second, third] = await Promise.all([
+      request(app).get(`/api/download/zip/${missingSessionId}`),
+      request(app).get(`/api/download/zip/${missingSessionId}`),
+      request(app).get(`/api/download/zip/${missingSessionId}`),
+    ]);
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect(third.status).toBe(404);
+    expect(errorFrom(first)).toBe('Session not found or expired');
+    expect(errorFrom(second)).toBe('Session not found or expired');
+    expect(errorFrom(third)).toBe('Session not found or expired');
   });
 });
 
