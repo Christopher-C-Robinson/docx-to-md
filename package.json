@@ -55,8 +55,9 @@
     "jest": "^30.5.2",
     "jszip": "^3.10.2",
     "supertest": "^7.3.1",
-    "ts-jest": "^29.4.15",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2",
+    "babel-jest": "^30.5.2",
+    "@babel/preset-typescript": "^8.0.7"
   },
   "bin": {
     "docx2md": "dist/cli/index.js"

@@ -1,5 +1,4 @@
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
@@ -8,7 +7,7 @@ module.exports = {
     '/node_modules/(?!(archiver|zip-stream|compress-commons|crc32-stream|is-stream)/)',
   ],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest',
+    '^.+\\.tsx?$': 'babel-jest',
     '^.+\\.js$': 'babel-jest',
   },
 };
