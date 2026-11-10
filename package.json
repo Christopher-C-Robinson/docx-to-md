@@ -61,5 +61,23 @@
   },
   "bin": {
     "docx2md": "dist/cli/index.js"
+  },
+  "overrides": {
+    "minimatch": "11.0.6",
+    "@electron/asar": {
+      "minimatch": "3.1.5"
+    },
+    "dir-compare": {
+      "minimatch": "3.1.5"
+    },
+    "filelist": {
+      "minimatch": "5.1.9"
+    },
+    "rimraf": {
+      "minimatch": "3.1.5"
+    },
+    "glob@7": {
+      "minimatch": "3.1.5"
+    }
   }
 }
