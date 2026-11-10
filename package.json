@@ -61,5 +61,8 @@
   },
   "bin": {
     "docx2md": "dist/cli/index.js"
+  },
+  "overrides": {
+    "minimatch@>=7 <11.0.1": "11.0.6"
   }
 }
