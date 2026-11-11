@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.19] – 2026-08-01
+
+### Fixed
+- update archiver 8.0.0 API usage and fix Jest ESM compatibility
+
+### Changed
+- Merge pull request #126 from Christopher-C-Robinson/dependabot/npm_and_yarn/tar-7.5.19
+- Merge pull request #125 from Christopher-C-Robinson/dependabot/npm_and_yarn/qs-6.15.3
+- Merge pull request #117 from Christopher-C-Robinson/dependabot/npm_and_yarn/dev-dependencies-4b051cb70c
+- bump tar from 7.5.11 to 7.5.19
+- bump qs from 6.15.0 to 6.15.3
+- Merge pull request #109 from Christopher-C-Robinson/dependabot/npm_and_yarn/archiver-8.0.0
+- resolve merge conflicts from main branch
+- bump the dev-dependencies group across 1 directory with 3 updates
+- Merge pull request #116 from Christopher-C-Robinson/dependabot/github_actions/actions/checkout-7
+- Merge pull request #115 from Christopher-C-Robinson/dependabot/npm_and_yarn/form-data-4.0.6
+- Merge pull request #114 from Christopher-C-Robinson/dependabot/npm_and_yarn/multer-2.2.0
+- Merge pull request #112 from Christopher-C-Robinson/dependabot/npm_and_yarn/commander-15.0.0
+- Merge pull request #111 from Christopher-C-Robinson/dependabot/npm_and_yarn/tmp-0.2.7
+- Merge pull request #110 from Christopher-C-Robinson/dependabot/npm_and_yarn/electron-42.2.0
+- bump actions/checkout from 6 to 7
+- bump form-data from 4.0.5 to 4.0.6
+- bump multer from 2.1.1 to 2.2.0
+- bump commander from 14.0.3 to 15.0.0
+- bump tmp from 0.2.5 to 0.2.7
+- bump electron from 41.6.1 to 42.2.0
+- bump archiver from 7.0.1 to 8.0.0
+
 ## [0.1.18] – 2026-05-19
 
 ### Added

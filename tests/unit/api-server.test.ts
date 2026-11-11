@@ -122,10 +122,19 @@ describe('POST /convert – successful conversion (corpus)', () => {
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
 
-    // After the request the uploaded tmp file should have been removed
+    // After the request the uploaded tmp file should have been removed.
+    // Ignore prefixes used by other routes or parallel Jest workers so this
+    // assertion stays focused on /convert cleanup (multer file + docx-to-md-*).
     const uploadedFiles = fs
       .readdirSync(os.tmpdir())
-      .filter((f) => !tmpBefore.has(f) && !f.startsWith('docx-to-md-'));
+      .filter(
+        (f) =>
+          !tmpBefore.has(f) &&
+          !f.startsWith('docx-to-md-') &&
+          !f.startsWith('docx-upload-') &&
+          !f.startsWith('docx-output-') &&
+          f !== 'docx-to-markdown-sessions',
+      );
     expect(uploadedFiles).toHaveLength(0);
   });
 });
