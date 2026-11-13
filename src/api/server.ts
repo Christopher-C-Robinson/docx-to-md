@@ -165,7 +165,10 @@ function sanitizeAssetFilename(filename: string): string {
 function normalizeDownloadBaseName(filename: string): string {
   const base = path.basename(filename, path.extname(filename));
   const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return safe || 'converted';
+  if (!safe || safe === '.' || safe === '..') {
+    return 'converted';
+  }
+  return safe;
 }
 
 function hasFilesInDirectory(dirPath: string): boolean {
@@ -781,7 +784,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Markdown file not found' });
       return;
     }
-    res.download('output.md', 'converted.md', { root: sessionDir });
+    const downloadName = `${session.downloadBaseName ?? 'converted'}.md`;
+    res.download('output.md', downloadName, { root: sessionDir });
   });
 
   app.get('/api/download/images/:sessionId', downloadLimiter, (req: Request, res: Response): void => {
@@ -804,7 +808,8 @@ export function createApp(): express.Application {
       return;
     }
 
-    pipeZipArchive(res, 'images.zip', (archive) => {
+    const downloadName = `${session.downloadBaseName ?? 'converted'}-images.zip`;
+    pipeZipArchive(res, downloadName, (archive) => {
       archive.directory(mediaDir, false);
     });
   });
@@ -817,7 +822,8 @@ export function createApp(): express.Application {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
-    if (!sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found or expired' });
       return;
     }
@@ -828,8 +834,9 @@ export function createApp(): express.Application {
       return;
     }
 
-    pipeZipArchive(res, 'document.zip', (archive) => {
-      archive.file(markdownPath, { name: 'document.md' });
+    const downloadBaseName = session.downloadBaseName ?? 'converted';
+    pipeZipArchive(res, `${downloadBaseName}.zip`, (archive) => {
+      archive.file(markdownPath, { name: `${downloadBaseName}.md` });
       if (hasFilesInDirectory(mediaDir)) {
         archive.directory(mediaDir, 'media');
       }

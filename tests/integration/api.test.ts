@@ -31,15 +31,17 @@ describe('API server', () => {
   // ── helpers ──────────────────────────────────────────────────────────────
 
   /** POST /api/convert with a real .docx file via multipart form */
-  function postConvert(filePath: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  function postConvert(
+    filePath: string,
+    uploadFilename = path.basename(filePath)
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
       const fileData = fs.readFileSync(filePath);
       const boundary = '----TestBoundary' + Date.now();
-      const filename = path.basename(filePath);
 
       const body = Buffer.concat([
         Buffer.from(
-          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n`
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${uploadFilename}"\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n`
         ),
         fileData,
         Buffer.from(`\r\n--${boundary}--\r\n`),
@@ -121,13 +123,13 @@ describe('API server', () => {
     expect(images[0]).toHaveProperty('url');
   });
 
-  test('GET /api/download/markdown/:sessionId serves .md file', async () => {
-    const convert = await postConvert(SIMPLE_DOCX);
+  test('GET /api/download/markdown/:sessionId serves .md file with sanitized source name', async () => {
+    const convert = await postConvert(SIMPLE_DOCX, 'Quarterly Report (Q1)?.docx');
     const sessionId = convert.body['sessionId'] as string;
     const res = await get(`/api/download/markdown/${sessionId}`);
     expect(res.status).toBe(200);
     const disposition = res.headers['content-disposition'] as string;
-    expect(disposition).toContain('converted.md');
+    expect(disposition).toContain('Quarterly_Report__Q1__.md');
   });
 
   test('GET /api/images/:sessionId/:filename serves an image', async () => {
@@ -156,39 +158,44 @@ describe('API server', () => {
     expect(res.status).toBe(404);
   });
 
-  test('GET /api/download/images/:sessionId returns a zip', async () => {
-    const convert = await postConvert(IMAGE_DOCX);
+  test('GET /api/download/images/:sessionId returns a zip with source-based name', async () => {
+    const convert = await postConvert(IMAGE_DOCX, 'Project Photos!.docx');
     const sessionId = convert.body['sessionId'] as string;
     const res = await get(`/api/download/images/${sessionId}`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/zip');
+    const disposition = res.headers['content-disposition'] as string;
+    expect(disposition).toContain('Project_Photos_-images.zip');
   });
 
-  test('GET /api/download/zip/:sessionId returns a zip with markdown and media', async () => {
-    const convert = await postConvert(IMAGE_DOCX);
+  test('GET /api/download/zip/:sessionId returns a zip with source-based names', async () => {
+    const convert = await postConvert(IMAGE_DOCX, 'My Source File?.docx');
     const sessionId = convert.body['sessionId'] as string;
     const res = await get(`/api/download/zip/${sessionId}`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/zip');
     const disposition = res.headers['content-disposition'] as string;
-    expect(disposition).toContain('document.zip');
+    expect(disposition).toContain('My_Source_File_.zip');
 
     const zip = await JSZip.loadAsync(res.rawBody);
     const entries = Object.keys(zip.files);
-    expect(entries).toContain('document.md');
+    expect(entries).toContain('My_Source_File_.md');
     expect(entries.some((entry) => entry.startsWith('media/'))).toBe(true);
   });
 
-  test('GET /api/download/zip/:sessionId omits media for markdown-only documents', async () => {
-    const convert = await postConvert(SIMPLE_DOCX);
+  test('GET /api/download/zip/:sessionId omits media for markdown-only documents and falls back when needed', async () => {
+    const convert = await postConvert(SIMPLE_DOCX, '..docx');
+    expect(convert.status).toBe(200);
     const sessionId = convert.body['sessionId'] as string;
     const res = await get(`/api/download/zip/${sessionId}`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/zip');
+    const disposition = res.headers['content-disposition'] as string;
+    expect(disposition).toContain('converted.zip');
 
     const zip = await JSZip.loadAsync(res.rawBody);
     const entries = Object.keys(zip.files);
-    expect(entries).toContain('document.md');
+    expect(entries).toContain('converted.md');
     expect(entries.some((entry) => entry.startsWith('media/'))).toBe(false);
   });
 
