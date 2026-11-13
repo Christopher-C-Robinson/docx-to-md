@@ -571,6 +571,7 @@
 
     let markdownRaw = '';
     let sessionId = '';
+    let isProcessing = false;
 
     const dropZone      = document.getElementById('drop-zone');
     const fileInput     = document.getElementById('file-input');
@@ -663,6 +664,15 @@
       return data;
     }
 
+    function updateSingleFileActionState() {
+      const singleFileActionsReady = Boolean(sessionId) && !isProcessing;
+      dlMdBtn.disabled = !singleFileActionsReady;
+      dlPdfBtn.disabled = !singleFileActionsReady;
+      dlZipBtn.disabled = !singleFileActionsReady;
+      dlImgsBtn.disabled = !singleFileActionsReady;
+      copyMdBtn.disabled = !singleFileActionsReady;
+    }
+
     // ── Tab switching ──────────────────────────────────────────────────────
     tabPreview.addEventListener('click', () => {
       tabPreview.classList.add('active'); tabPreview.setAttribute('aria-selected','true');
@@ -714,7 +724,7 @@
     resetBtn.addEventListener('click', resetAll);
 
     function resetAll() {
-      markdownRaw = ''; sessionId = '';
+      markdownRaw = ''; sessionId = ''; isProcessing = false;
       resultSection.classList.remove('visible');
       imagesSection.classList.remove('visible');
       statusBar.classList.remove('visible','error');
@@ -731,6 +741,7 @@
       resetBtn.style.display = 'none';
       dropZone.style.display = '';
       fileInput.value = '';
+      updateSingleFileActionState();
     }
 
     // ── Copy to clipboard ──────────────────────────────────────────────────
@@ -747,24 +758,24 @@
 
     // ── Download markdown ──────────────────────────────────────────────────
     dlMdBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!sessionId || isProcessing) return;
       window.location.href = `/api/download/markdown/${encodeURIComponent(sessionId)}`;
     });
 
     dlPdfBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!sessionId || isProcessing) return;
       window.location.href = `/api/download/pdf/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download zip (markdown + media) ───────────────────────────────────
     dlZipBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!sessionId || isProcessing) return;
       window.location.href = `/api/download/zip/${encodeURIComponent(sessionId)}`;
     });
 
     // ── Download images ────────────────────────────────────────────────────
     dlImgsBtn.addEventListener('click', () => {
-      if (!sessionId) return;
+      if (!sessionId || isProcessing) return;
       window.location.href = `/api/download/images/${encodeURIComponent(sessionId)}`;
     });
 
@@ -775,11 +786,15 @@
         return;
       }
 
+      isProcessing = true;
+      sessionId = '';
+      markdownRaw = '';
       dropZone.style.display = 'none';
       resultSection.classList.remove('visible');
       imagesSection.classList.remove('visible');
       warningsBox.classList.remove('visible');
       resetBtn.style.display = 'none';
+      updateSingleFileActionState();
       showStatus('Converting…');
 
       const formData = new FormData();
@@ -842,6 +857,9 @@
         resetBtn.style.display = '';
       } catch (err) {
         showError(toUserError(err));
+      } finally {
+        isProcessing = false;
+        updateSingleFileActionState();
       }
     }
 
@@ -851,6 +869,7 @@
     let batchQueue = [];
 
     function startBatch(files) {
+      sessionId = '';
       batchQueue = files.map(f => ({ file: f, sessionId: null, status: 'pending', error: null, hasImages: false }));
       renderBatchList();
       dropZone.style.display = 'none';
@@ -862,6 +881,7 @@
       batchSection.classList.add('visible');
       batchTitle.textContent = `Batch Conversion — ${files.length} file${files.length !== 1 ? 's' : ''}`;
       batchConvertBtn.disabled = false;
+      updateSingleFileActionState();
     }
 
     function renderBatchList() {
@@ -969,6 +989,8 @@
       dropZone.style.display = '';
       resetBtn.style.display = '';
     }
+
+    updateSingleFileActionState();
 
     // ── Update notification ────────────────────────────────────────────────
     (async function checkForAppUpdate() {
