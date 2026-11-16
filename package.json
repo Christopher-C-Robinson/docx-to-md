@@ -41,8 +41,8 @@
     "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
-    "@babel/core": "^8.1.0",
-    "@babel/plugin-transform-modules-commonjs": "^8.0.1",
+    "@babel/core": "^8.1.2",
+    "@babel/plugin-transform-modules-commonjs": "^8.1.2",
     "@types/archiver": "^8.0.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
@@ -50,11 +50,11 @@
     "@types/node": "^26.6.6",
     "@types/supertest": "^7.2.1",
     "@types/turndown": "^5.0.6",
-    "electron": "^45.2.3",
+    "electron": "^45.3.1",
     "electron-builder": "^26.18.0",
     "jest": "^30.5.2",
     "jszip": "^3.10.2",
-    "supertest": "^7.3.1",
+    "supertest": "^7.3.2",
     "typescript": "^7.0.2",
     "babel-jest": "^30.5.2",
     "@babel/preset-typescript": "^8.0.7"
